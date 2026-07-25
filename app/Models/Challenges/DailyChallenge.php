@@ -1,0 +1,62 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models\Challenges;
+
+use App\Models\Feed;
+use App\Models\User;
+use App\Traits\SyncsToFeed;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+
+class DailyChallenge extends Model
+{
+    use HasFactory;
+    use SyncsToFeed;
+
+    protected static function booted(): void
+    {
+        static::deleting(function (self $item): void {
+            Feed::where('feedable_type', get_class($item))
+                ->where('feedable_id', $item->id)
+                ->delete();
+        });
+    }
+
+    protected $fillable = [
+        'user_id',
+        'title',
+        'subject',
+        'prompt',
+        'options',
+        'correct_answer_index',
+        'badge_text',
+        'reward_text',
+        'expires_in_hours',
+        'status',
+        'published_at',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'options' => 'array',
+            'correct_answer_index' => 'integer',
+            'expires_in_hours' => 'integer',
+            'published_at' => 'datetime',
+        ];
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function feeds(): MorphMany
+    {
+        return $this->morphMany(Feed::class, 'feedable');
+    }
+}

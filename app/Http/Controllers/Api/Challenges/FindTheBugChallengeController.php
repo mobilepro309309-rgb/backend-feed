@@ -1,0 +1,161 @@
+<?php
+
+namespace App\Http\Controllers\Api\Challenges;
+
+use App\Http\Controllers\Controller;
+use App\Models\Challenges\FindTheBugChallenge;
+use App\Models\Message;
+use App\Models\User;
+use App\Services\NotificationService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+
+class FindTheBugChallengeController extends Controller
+{
+    public function __construct(protected NotificationService $notificationService)
+    {
+    }
+
+    protected function resolveQuizId(string $input): ?int
+    {
+        if (is_numeric($input)) {
+            $candidate = (int) $input;
+            $message = Message::find($candidate);
+
+            if ($message) {
+                $messageText = (string) ($message->text ?? '');
+                if (is_numeric($messageText)) {
+                    return (int) $messageText;
+                }
+
+                $decodedText = json_decode($messageText, true);
+                $payloadId = data_get($decodedText, 'sharedCardPayload.id')
+                    ?? data_get($decodedText, 'sharedCardPayload.quiz_id')
+                    ?? data_get($decodedText, 'shared_card_payload.id')
+                    ?? data_get($decodedText, 'shared_card_payload.quiz_id')
+                    ?? data_get($decodedText, 'quiz_id')
+                    ?? data_get($decodedText, 'id');
+
+                if (is_numeric($payloadId)) {
+                    return (int) $payloadId;
+                }
+            }
+
+            return $candidate;
+        }
+
+        return null;
+    }
+
+    public function show(string $id)
+    {
+        $resolvedQuizId = $this->resolveQuizId($id);
+        $item = $resolvedQuizId ? FindTheBugChallenge::find($resolvedQuizId) : null;
+
+        if (! $item) {
+            return response()->json(['message' => 'سؤال اكتشاف الخطأ غير موجود'], 404);
+        }
+
+        $options = collect($item->options ?? [])->map(function ($opt) {
+            return ['label' => (string) $opt, 'value' => (string) $opt];
+        })->values()->all();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'id' => $item->id,
+                'title' => $item->title,
+                'subject' => $item->subject,
+                'prompt' => $item->prompt,
+                'question' => $item->prompt,
+                'options' => $options,
+                'choices' => $options,
+                'correct_answer_index' => (int) ($item->correct_answer_index ?? 0),
+                'correctIndex' => (int) ($item->correct_answer_index ?? 0),
+                'correct_index' => (int) ($item->correct_answer_index ?? 0),
+                'badge_text' => $item->badge_text,
+                'quizType' => 'find_the_bug',
+                'questionType' => 'find_the_bug',
+                'type' => 'find_the_bug',
+            ],
+        ]);
+    }
+
+    public function store(Request $request)
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return response()->json([
+                'message' => 'المستخدم غير مصادق عليه',
+            ], 401);
+        }
+
+        if (! in_array($user->role, ['main-admin', 'question_post_admin'], true)) {
+            return response()->json([
+                'message' => 'ليس لديك صلاحية لحفظ هذا السؤال',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:180'],
+            'subject' => ['required', 'string', 'max:120'],
+            'prompt' => ['required', 'string'],
+            'options' => ['required', 'array', 'min:2'],
+            'options.*' => ['nullable', 'string'],
+            'correct_answer_index' => ['required', 'integer', 'min:0', 'max:3'],
+            'badge_text' => ['nullable', 'string', 'max:120'],
+            'status' => ['nullable', 'in:draft,published'],
+        ]);
+
+        $challenge = FindTheBugChallenge::create([
+            'user_id' => $user->id,
+            'title' => $validated['title'],
+            'subject' => $validated['subject'],
+            'prompt' => $validated['prompt'],
+            'options' => array_values(array_map(fn($value) => (string) $value, $validated['options'])),
+            'correct_answer_index' => (int) $validated['correct_answer_index'],
+            'badge_text' => $validated['badge_text'] ?? null,
+            'status' => $validated['status'] ?? 'draft',
+            'published_at' => ($validated['status'] ?? 'draft') === 'published' ? now() : null,
+        ]);
+
+        try {
+            $recipients = User::whereHas('devices')->get();
+
+            foreach ($recipients as $recipient) {
+                try {
+                    $this->notificationService->sendNotification(
+                        $recipient,
+                        'تمت إضافة سؤال اكتشف الخطأ جديد!',
+                        "تمت إضافة سؤال اكتشف الخطأ: {$challenge->title}",
+                        [
+                            'type' => 'new_find_the_bug',
+                            'challenge_id' => $challenge->id,
+                            'target_id' => $challenge->id,
+                            'target_type' => 'quiz',
+                            'title' => $challenge->title,
+                            'subject' => $challenge->subject,
+                        ]
+                    );
+                } catch (\Throwable $e) {
+                    Log::warning('[FindTheBugChallengeController] Failed to send push notification to student', [
+                        'recipient_id' => $recipient->id,
+                        'challenge_id' => $challenge->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::error('[FindTheBugChallengeController] Failed to dispatch notifications after challenge save', [
+                'challenge_id' => $challenge->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'تم حفظ سؤال اكتشف الخطأ بنجاح',
+            'data' => $challenge->fresh()->load('user'),
+        ], 201);
+    }
+}
