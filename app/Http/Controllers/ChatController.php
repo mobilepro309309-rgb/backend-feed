@@ -6,14 +6,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Cache, DB, Log};
 
 use App\Events\{MessageSent, MessageStatusUpdated, MessagesRead, UserTyping};
-use App\Models\{Chat, ChatParticipant, Message, User};
-use App\Services\NotificationService;
+use App\Models\{Chat, ChatParticipant, Message};
 
 class ChatController extends Controller
 {
-    public function __construct(protected NotificationService $notificationService)
-    {
-    }
     public function index(Request $request)
     {
         $userId = (int) auth()->id();
@@ -180,69 +176,6 @@ class ChatController extends Controller
         ], 200);
     }
 
-    protected function sendChatNotification(int $senderId, ?int $receiverId, int $chatId, string $messageText, string $messageType = 'text'): void
-    {
-        $sender = auth()->user();
-        $senderName = $sender?->name ?? 'زميل';
-        $messageBody = trim($messageText ?: 'لديك رسالة جديدة');
-        $messageBody = mb_substr($messageBody, 0, 120);
-
-        $recipientIds = [];
-        if ($receiverId && $receiverId !== $senderId) {
-            $recipientIds[] = $receiverId;
-        }
-
-        if (empty($recipientIds)) {
-            $recipientIds = ChatParticipant::where('chat_id', $chatId)
-                ->where('user_id', '!=', $senderId)
-                ->pluck('user_id')
-                ->filter(static fn ($userId) => is_numeric($userId) && (int) $userId !== $senderId)
-                ->map(static fn ($userId) => (int) $userId)
-                ->unique()
-                ->values()
-                ->all();
-        }
-
-        if (empty($recipientIds)) {
-            Log::warning('Chat notification aborted: no eligible recipient user ids found', [
-                'sender_id' => $senderId,
-                'chat_id' => $chatId,
-            ]);
-            return;
-        }
-
-        foreach ($recipientIds as $targetUserId) {
-            $receiver = User::find($targetUserId);
-            if (! $receiver) {
-                continue;
-            }
-
-            try {
-                $this->notificationService->sendNotification(
-                    $receiver,
-                    "رسالة جديدة من {$senderName}",
-                    $messageBody,
-                    [
-                        'type' => 'chat_message',
-                        'targetType' => 'chat',
-                        'chat_id' => $chatId,
-                        'target_id' => $chatId,
-                        'sender_id' => $senderId,
-                        'sender_name' => $senderName,
-                        'message_type' => $messageType,
-                    ]
-                );
-            } catch (\Throwable $e) {
-                Log::warning('Unable to send chat notification', [
-                    'sender_id' => $senderId,
-                    'receiver_id' => $targetUserId,
-                    'chat_id' => $chatId,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-    }
-
     public function sendMessage(Request $request)
     {
         $validated = $request->validate([
@@ -371,10 +304,6 @@ class ChatController extends Controller
 
             broadcast(new MessageSent($message))->toOthers();
 
-            if ($receiverId && $chatId) {
-                $this->sendChatNotification($senderId, $receiverId, $chatId, $resolvedMessageText, $resolvedMessageType);
-            }
-
             return response()->json([
                 'message' => $message,
                 'chat_id' => $chatId,
@@ -431,7 +360,6 @@ class ChatController extends Controller
                 $chatId = (int) $existingChatId;
             } else {
                 $chat = Chat::create(['type' => 'private']);
-
                 foreach ([
                     ['chat_id' => $chat->id, 'user_id' => $senderId],
                     ['chat_id' => $chat->id, 'user_id' => $receiverId],
@@ -441,7 +369,6 @@ class ChatController extends Controller
                         ['created_at' => now(), 'updated_at' => now()]
                     );
                 }
-
                 $chatId = (int) $chat->id;
             }
         }
@@ -455,10 +382,6 @@ class ChatController extends Controller
         ]);
 
         broadcast(new MessageSent($message))->toOthers();
-
-        if ($receiverId && $chatId) {
-            $this->sendChatNotification($senderId, $receiverId, $chatId, $resolvedMessageText, $resolvedMessageType);
-        }
 
         return response()->json([
             'message' => $message,
