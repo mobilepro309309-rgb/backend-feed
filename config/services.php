@@ -40,4 +40,14 @@ return [
         'service_role_key' => env('SUPABASE_SERVICE_ROLE_KEY'),
     ],
 
+    'paymob' => [
+        'api_key' => env('PAYMOB_API_KEY'),
+        'public_key' => env('PAYMOB_PUBLIC_KEY'),
+        'secret_key' => env('PAYMOB_SECRET_KEY'),
+        'hmac' => env('PAYMOB_HMAC'),
+        'integration_id' => env('PAYMOB_INTEGRATION_ID'),
+        'cash_integration_id' => env('PAYMOB_CASH_INTEGRATION_ID'),
+        'iframe_id' => env('PAYMOB_IFRAME_ID'),
+    ],
+
 ];

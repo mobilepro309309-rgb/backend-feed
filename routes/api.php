@@ -13,8 +13,10 @@ use App\Http\Controllers\Api\Challenges\{CloudCapsuleChallengeController, Compar
 use App\Http\Controllers\Api\Challenges\CheatSheetController;
 use App\Http\Controllers\Api\Questions\{MultipleChoiceQuestionController, TrueFalseQuestionController};
 use App\Http\Controllers\Api\v1\FeedController;
+use App\Http\Controllers\KashierController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SavedPostsController;
+use App\Http\Controllers\WalletController;
 
 Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
@@ -37,6 +39,7 @@ $apiRoutes = function (): void {
     Route::get('/cheat-sheet/{id}', [CheatSheetController::class, 'show']);
     Route::post('/quiz-batch', [QuizBatchController::class, 'batch']);
     Route::post('/notifications/send', [NotificationController::class, 'send']);
+    Route::post('/kashier/payment-hash', [KashierController::class, 'generatePaymentHash']);
 
     // Saved posts (development-friendly endpoints)
     Route::post('/posts/{postId}/toggle-save', [SavedPostsController::class, 'toggleSavePost']);
@@ -73,6 +76,7 @@ $apiRoutes = function (): void {
         Route::get('/notifications', [NotificationController::class, 'index']);
 
         Route::get('/user/profile', [UserController::class, 'show']);
+        Route::post('/wallet/top-up', [WalletController::class, 'topUp']);
         // legacy profile route removed
         Route::get('/profile/{id}/latest-questions', [LatestQuestionsController::class, 'getUserQuestions']);
         // Alternate route for clients expecting `/users/{id}/latest-questions`
@@ -118,9 +122,9 @@ $apiRoutes = function (): void {
         Route::post('/true-false-questions', [TrueFalseQuestionController::class, 'store']);
         Route::get('/interactive-videos', [InteractiveVideoController::class, 'index']);
         Route::post('/interactive-videos', [InteractiveVideoController::class, 'store']);
-
-        
     });
+
+    Route::post('/wallet/webhook', [WalletController::class, 'webhook']);
 };
 
 Route::middleware('api')->group($apiRoutes);

@@ -13,6 +13,7 @@ use App\Models\Questions\{MultipleChoiceQuestion, TrueFalseQuestion};
 use App\Models\Posts\Post;
 use App\Models\Users\UserAddress;
 use App\Models\Friendship;
+use App\Models\Wallet;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Database\Factories\UserFactory;
@@ -134,9 +135,23 @@ class User extends Authenticatable
             ->withTimestamps();
     }
 
+    public static function booted(): void
+    {
+        static::created(function (User $user): void {
+            $user->wallet()->create([
+                'balance' => 0.00,
+            ]);
+        });
+    }
+
     public function address()
     {
         return $this->hasOne(UserAddress::class);
+    }
+
+    public function wallet()
+    {
+        return $this->hasOne(Wallet::class);
     }
 
     public function friendsOfMine(): BelongsToMany

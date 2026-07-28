@@ -27,6 +27,19 @@ class StorageController extends Controller
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     ];
 
+    private const AUDIO_MIME_TYPES = [
+        'audio/m4a',
+        'audio/x-m4a',
+        'audio/mp3',
+        'audio/mpeg',
+        'audio/aac',
+        'audio/wav',
+        'audio/ogg',
+        'audio/3gpp',
+        'audio/mp4',
+        'audio/flac',
+    ];
+
     public function presign(Request $request)
     {
         $validated = Validator::make($request->all(), [
@@ -47,6 +60,10 @@ class StorageController extends Controller
         } elseif (in_array($fileType, self::DOCUMENT_MIME_TYPES, true)) {
             if ($fileSize > 10 * 1024 * 1024) {
                 return Response::json(['success' => false, 'message' => 'Document upload size cannot exceed 10MB.'], 422);
+            }
+        } elseif (in_array($fileType, self::AUDIO_MIME_TYPES, true)) {
+            if ($fileSize > 15 * 1024 * 1024) {
+                return Response::json(['success' => false, 'message' => 'Audio upload size cannot exceed 15MB.'], 422);
             }
         } else {
             return Response::json(['success' => false, 'message' => 'Unsupported file type.'], 422);

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\{Cache, DB, Log};
+use Illuminate\Support\Facades\{Cache, DB, Log, Validator};
 
 use App\Events\{MessageSent, MessageStatusUpdated, MessagesRead, UserTyping};
 use App\Models\{Chat, ChatParticipant, Message};
@@ -178,20 +178,49 @@ class ChatController extends Controller
 
     public function sendMessage(Request $request)
     {
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'receiver_id' => ['nullable', 'integer', 'exists:users,id'],
-            'text' => ['required', 'string', 'max:10000'],
+            'text' => ['nullable', 'string', 'max:10000', 'required_without:file_url'],
             'chat_id' => ['nullable', 'integer', 'exists:chats,id'],
             'reply_to_id' => ['nullable', 'integer', 'exists:messages,id'],
             'message_type' => ['nullable', 'string'],
             'shared_content_id' => ['nullable', 'string'],
             'shared_content_type' => ['nullable', 'string'],
+            'file_url' => ['nullable', 'string', 'required_without:text'],
+            'file_type' => ['nullable', 'string'],
+            'file_name' => ['nullable', 'string'],
+            'file_size' => ['nullable', 'integer'],
         ]);
 
+        if ($validator->fails()) {
+            $errors = $validator->errors();
+            Log::error('SEND MESSAGE VALIDATION FAILED', ['errors' => $errors->toArray(), 'request' => $request->all()]);
+
+            return response()->json([
+                'message' => 'Validation failed.',
+                'errors' => $errors,
+            ], 422);
+        }
+
+        $validated = $validator->validated();
         $senderId = (int) auth()->id();
         $receiverId = isset($validated['receiver_id']) ? (int) $validated['receiver_id'] : null;
         $chatId = $validated['chat_id'] ?? null;
         $resolvedMessageType = $this->resolveMessageType($request, $validated);
+
+        if (! empty($validated['file_url'])) {
+            $fileType = trim((string) ($validated['file_type'] ?? ''));
+            if ($resolvedMessageType === 'text' || $resolvedMessageType === '') {
+                $resolvedMessageType = match ($fileType) {
+                    'image' => 'image',
+                    'video' => 'video',
+                    'audio' => 'audio',
+                    'document' => 'document',
+                    default => 'media',
+                };
+            }
+        }
+
         $resolvedMessageText = $this->resolveMessageText($request, $validated, $resolvedMessageType);
 
         try {
@@ -253,17 +282,26 @@ class ChatController extends Controller
                             'message_type' => $resolvedMessageType,
                             'status' => 'sent',
                             'reply_to_id' => $validated['reply_to_id'] ?? null,
+                            'file_url' => $validated['file_url'] ?? null,
+                            'file_type' => $validated['file_type'] ?? null,
+                            'file_name' => $validated['file_name'] ?? null,
+                            'file_size' => $validated['file_size'] ?? null,
                         ]);
 
                         DB::commit();
-
                         $chatId = (int) $chat->id;
                     } catch (\Throwable $e) {
                         DB::rollBack();
+                        error_log('SEND MESSAGE ERROR: ' . $e->getMessage());
+                        Log::error('SEND MESSAGE ERROR DETAILS', [
+                            'error' => $e->getMessage(),
+                            'request' => $request->all(),
+                        ]);
                         Log::error('Chat message creation failed', [
                             'sender_id' => $senderId,
                             'receiver_id' => $receiverId,
                             'error' => $e->getMessage(),
+                            'payload' => $validated,
                         ]);
 
                         return response()->json([
@@ -284,16 +322,26 @@ class ChatController extends Controller
                         'message_type' => $resolvedMessageType,
                         'status' => 'sent',
                         'reply_to_id' => $validated['reply_to_id'] ?? null,
+                        'file_url' => $validated['file_url'] ?? null,
+                        'file_type' => $validated['file_type'] ?? null,
+                        'file_name' => $validated['file_name'] ?? null,
+                        'file_size' => $validated['file_size'] ?? null,
                     ]);
 
                     DB::commit();
                 } catch (\Throwable $e) {
                     DB::rollBack();
+                    error_log('SEND MESSAGE ERROR: ' . $e->getMessage());
+                    Log::error('SEND MESSAGE ERROR DETAILS', [
+                        'error' => $e->getMessage(),
+                        'request' => $request->all(),
+                    ]);
                     Log::error('Chat message save failed', [
                         'chat_id' => $chatId,
                         'sender_id' => $senderId,
                         'receiver_id' => $receiverId,
                         'error' => $e->getMessage(),
+                        'payload' => $validated,
                     ]);
 
                     return response()->json([
@@ -326,11 +374,15 @@ class ChatController extends Controller
         $validated = $request->validate([
             'receiver_id' => ['required', 'integer', 'exists:users,id'],
             'chat_id' => ['nullable', 'integer', 'exists:chats,id'],
-            'text' => ['required', 'string', 'max:10000'],
+            'text' => ['nullable', 'string', 'max:10000', 'required_without:file_url'],
             'message_type' => ['nullable', 'string'],
             'feed_type' => ['nullable', 'string'],
             'shared_content_id' => ['nullable', 'string'],
             'shared_content_type' => ['nullable', 'string'],
+            'file_url' => ['nullable', 'string', 'required_without:text'],
+            'file_type' => ['nullable', 'string'],
+            'file_name' => ['nullable', 'string'],
+            'file_size' => ['nullable', 'integer'],
         ]);
 
         $senderId = (int) auth()->id();
@@ -373,12 +425,27 @@ class ChatController extends Controller
             }
         }
 
+        if (! empty($validated['file_url']) && ($resolvedMessageType === 'text' || $resolvedMessageType === '')) {
+            $fileType = trim((string) ($validated['file_type'] ?? ''));
+            $resolvedMessageType = match ($fileType) {
+                'image' => 'image',
+                'video' => 'video',
+                'audio' => 'audio',
+                'document' => 'document',
+                default => 'media',
+            };
+        }
+
         $message = Message::create([
             'chat_id' => $chatId,
             'sender_id' => $senderId,
             'text' => $resolvedMessageText,
             'message_type' => $resolvedMessageType,
             'status' => 'sent',
+            'file_url' => $validated['file_url'] ?? null,
+            'file_type' => $validated['file_type'] ?? null,
+            'file_name' => $validated['file_name'] ?? null,
+            'file_size' => $validated['file_size'] ?? null,
         ]);
 
         broadcast(new MessageSent($message))->toOthers();
@@ -426,9 +493,30 @@ class ChatController extends Controller
         foreach ($candidates as $candidate) {
             $normalized = mb_strtolower($candidate);
 
+            if (str_starts_with($normalized, 'image/')) {
+                return 'image';
+            }
+
+            if (str_starts_with($normalized, 'video/')) {
+                return 'video';
+            }
+
+            if (str_starts_with($normalized, 'audio/')) {
+                return 'audio';
+            }
+
+            if (in_array($normalized, ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'], true)) {
+                return 'document';
+            }
+
             $mapped = match ($normalized) {
                 'text' => 'text',
                 'post' => 'post',
+                'image' => 'image',
+                'video' => 'video',
+                'audio' => 'audio',
+                'document' => 'document',
+                'media' => 'media',
                 'multiplechoicequiz' => 'MultipleChoiceQuiz',
                 'multiple-choice-quiz' => 'MultipleChoiceQuiz',
                 'multiple-choice-question' => 'MultipleChoiceQuiz',
@@ -485,7 +573,17 @@ class ChatController extends Controller
 
         $messages = \App\Models\Message::where('chat_id', $chatId)
             ->with(['replyTo' => function ($query) {
-                $query->select(['id', 'chat_id', 'sender_id', 'text', 'created_at']);
+                $query->select([
+                    'id',
+                    'chat_id',
+                    'sender_id',
+                    'text',
+                    'created_at',
+                    'file_url',
+                    'file_type',
+                    'file_name',
+                    'file_size',
+                ]);
             }])
             ->orderBy('created_at', 'asc')
             ->get();

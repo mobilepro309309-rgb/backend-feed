@@ -17,6 +17,10 @@ class Message extends Model
         'message_type',
         'status',
         'reply_to_id',
+        'file_url',
+        'file_type',
+        'file_name',
+        'file_size',
     ];
 
     protected $casts = [
