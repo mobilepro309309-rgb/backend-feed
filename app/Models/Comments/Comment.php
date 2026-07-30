@@ -26,6 +26,7 @@ class Comment extends Model
         'content',
         'type',
         'metadata',
+        'file_url',
     ];
 
     protected function casts(): array

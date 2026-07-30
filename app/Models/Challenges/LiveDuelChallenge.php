@@ -31,6 +31,7 @@ class LiveDuelChallenge extends Model
         'title',
         'subject',
         'challenge_text',
+        'file_url',
         'badge_text',
         'question_count',
         'seconds_per_question',

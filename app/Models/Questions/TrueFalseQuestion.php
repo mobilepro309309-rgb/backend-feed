@@ -31,6 +31,7 @@ class TrueFalseQuestion extends Model
         'title',
         'subject',
         'prompt',
+        'file_url',
         'correct_answer',
         'explanation',
         'badge_text',

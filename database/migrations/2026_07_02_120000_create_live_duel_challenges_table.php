@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('title', 180);
             $table->string('subject', 120);
             $table->text('challenge_text')->nullable();
+            $table->string('file_url')->nullable();
             $table->string('badge_text', 80)->nullable();
             $table->unsignedSmallInteger('question_count')->default(3);
             $table->unsignedSmallInteger('seconds_per_question')->default(14);

@@ -34,6 +34,7 @@ class ComparisonChallenge extends Model
         'right_label',
         'left_text',
         'right_text',
+        'file_url',
         'explanation',
         'badge_text',
         'status',

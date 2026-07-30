@@ -149,6 +149,11 @@ class User extends Authenticatable
         return $this->hasOne(UserAddress::class);
     }
 
+    public function profile()
+    {
+        return $this->hasOne(UserProfile::class);
+    }
+
     public function wallet()
     {
         return $this->hasOne(Wallet::class);

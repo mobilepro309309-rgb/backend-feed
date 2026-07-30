@@ -31,6 +31,7 @@ class DailyChallenge extends Model
         'title',
         'subject',
         'prompt',
+        'file_url',
         'options',
         'correct_answer_index',
         'badge_text',

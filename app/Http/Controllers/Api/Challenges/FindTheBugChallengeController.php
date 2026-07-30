@@ -74,6 +74,7 @@ class FindTheBugChallengeController extends Controller
                 'correctIndex' => (int) ($item->correct_answer_index ?? 0),
                 'correct_index' => (int) ($item->correct_answer_index ?? 0),
                 'badge_text' => $item->badge_text,
+                'file_url' => $item->file_url ?? null,
                 'quizType' => 'find_the_bug',
                 'questionType' => 'find_the_bug',
                 'type' => 'find_the_bug',
@@ -100,19 +101,33 @@ class FindTheBugChallengeController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:180'],
             'subject' => ['required', 'string', 'max:120'],
-            'prompt' => ['required', 'string'],
+            'prompt' => ['nullable', 'string'],
             'options' => ['required', 'array', 'min:2'],
             'options.*' => ['nullable', 'string'],
             'correct_answer_index' => ['required', 'integer', 'min:0', 'max:3'],
             'badge_text' => ['nullable', 'string', 'max:120'],
+            'file_url' => ['nullable', 'string', 'max:2048'],
             'status' => ['nullable', 'in:draft,published'],
         ]);
+
+        $prompt = trim((string) ($validated['prompt'] ?? ''));
+        $fileUrl = trim((string) ($validated['file_url'] ?? ''));
+
+        if ($prompt === '' && $fileUrl === '') {
+            return response()->json([
+                'message' => 'يجب إدخال نص السؤال أو رفع ملف للسؤال.',
+                'errors' => [
+                    'prompt' => ['يجب إدخال نص السؤال أو رفع ملف للسؤال.'],
+                ],
+            ], 422);
+        }
 
         $challenge = FindTheBugChallenge::create([
             'user_id' => $user->id,
             'title' => $validated['title'],
             'subject' => $validated['subject'],
-            'prompt' => $validated['prompt'],
+            'prompt' => $prompt ?: null,
+            'file_url' => $validated['file_url'] ?? null,
             'options' => array_values(array_map(fn($value) => (string) $value, $validated['options'])),
             'correct_answer_index' => (int) $validated['correct_answer_index'],
             'badge_text' => $validated['badge_text'] ?? null,

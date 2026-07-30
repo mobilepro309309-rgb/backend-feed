@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('title', 180);
             $table->string('subject', 120)->nullable();
             $table->text('prompt')->nullable();
+            $table->string('file_url')->nullable();
             $table->json('options')->nullable();
             $table->unsignedTinyInteger('correct_answer_index')->default(0);
             $table->string('badge_text', 120)->nullable();

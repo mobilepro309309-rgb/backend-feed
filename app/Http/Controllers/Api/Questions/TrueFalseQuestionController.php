@@ -64,6 +64,7 @@ class TrueFalseQuestionController extends Controller
                 'subject' => $item->subject,
                 'prompt' => $item->prompt,
                 'question' => $item->prompt,
+                'file_url' => $item->file_url ?? null,
                 'correct_answer' => (bool) $item->correct_answer,
                 'correctAnswer' => (bool) $item->correct_answer,
                 'explanation' => $item->explanation,
@@ -94,12 +95,25 @@ class TrueFalseQuestionController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:180'],
             'subject' => ['required', 'string', 'max:120'],
-            'prompt' => ['required', 'string'],
+            'prompt' => ['nullable', 'string'],
             'correct_answer' => ['required', 'boolean'],
             'explanation' => ['nullable', 'string'],
             'badge_text' => ['nullable', 'string', 'max:120'],
+            'file_url' => ['nullable', 'string', 'max:2048'],
             'status' => ['nullable', 'in:draft,published'],
         ]);
+
+        $prompt = trim((string) ($validated['prompt'] ?? ''));
+        $fileUrl = trim((string) ($validated['file_url'] ?? ''));
+
+        if ($prompt === '' && $fileUrl === '') {
+            return response()->json([
+                'message' => 'يجب إدخال نص السؤال أو رفع ملف للسؤال.',
+                'errors' => [
+                    'prompt' => ['يجب إدخال نص السؤال أو رفع ملف للسؤال.'],
+                ],
+            ], 422);
+        }
 
         $normalizedCorrectAnswer = $validated['correct_answer'] ? 0 : 1;
 
@@ -107,7 +121,8 @@ class TrueFalseQuestionController extends Controller
             'user_id' => $user->id,
             'title' => $validated['title'],
             'subject' => $validated['subject'],
-            'prompt' => $validated['prompt'],
+            'prompt' => $prompt ?: null,
+            'file_url' => $validated['file_url'] ?? null,
             'correct_answer' => $normalizedCorrectAnswer,
             'explanation' => $validated['explanation'] ?? null,
             'badge_text' => $validated['badge_text'] ?? null,

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\NotificationUser;
 use App\Models\User;
+use App\Models\UserDevice;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -44,13 +45,32 @@ class NotificationController extends Controller
             }
 
             try {
-                $device = $this->notificationService->registerToken(
-                    $user,
-                    $validated['fcm_token'],
-                    $validated['device_type'] ?? null
-                );
+$deviceToken = $validated['fcm_token'];
+            $existingDevice = UserDevice::where('user_id', $user->id)
+                ->where('fcm_token', $deviceToken)
+                ->first();
 
-                Log::info('[NotificationController@storeToken] device registered', ['user_id' => $user->id, 'device_id' => $device->id ?? null, 'fcm_token' => $validated['fcm_token']]);
+            $device = $this->notificationService->registerToken(
+                $user,
+                $deviceToken,
+                $validated['device_type'] ?? null
+            );
+
+            if (! $existingDevice) {
+                $this->notificationService->sendNotification(
+                    $user,
+                    'تنبيه أمني',
+                    'تم تسجيل الدخول إلى حسابك من هاتف جديد. هل أنت هذا الشخص؟',
+                    [
+                        'type' => 'security_login_alert',
+                        'source' => 'new_device_login',
+                        'user_id' => $user->id,
+                    ],
+                    $deviceToken
+                );
+            }
+
+            Log::info('[NotificationController@storeToken] device registered', ['user_id' => $user->id, 'device_id' => $device->id ?? null, 'fcm_token' => $deviceToken]);
 
                 return response()->json([
                     'success' => true,
@@ -135,6 +155,7 @@ class NotificationController extends Controller
                     'chat_id' => data_get($payload, 'chat_id') ?? null,
                     'sender_id' => data_get($payload, 'sender_id') ?? null,
                     'sender_name' => data_get($payload, 'sender_name') ?? null,
+                    'sender_avatar' => data_get($payload, 'sender_avatar') ?? null,
                     'targetPostId' => $targetId,
                     'unread' => ! $delivery->read_at,
                     'accent' => $isQuizType ? '#3B82F6' : '#10B981',

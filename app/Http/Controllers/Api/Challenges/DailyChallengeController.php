@@ -91,6 +91,7 @@ class DailyChallengeController extends Controller
                 'correctIndex' => is_numeric($correctIndex) ? (int) $correctIndex : null,
                 'correct_index' => is_numeric($correctIndex) ? (int) $correctIndex : null,
                 'badge_text' => $item->badge_text,
+                'file_url' => $item->file_url ?? null,
                 'reward_text' => $item->reward_text,
                 'quizType' => 'daily_challenge',
                 'questionType' => 'daily_challenge',
@@ -118,21 +119,35 @@ class DailyChallengeController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:180'],
             'subject' => ['required', 'string', 'max:120'],
-            'prompt' => ['required', 'string'],
+            'prompt' => ['nullable', 'string'],
             'options' => ['required', 'array', 'min:2'],
             'options.*' => ['nullable', 'string'],
             'correct_answer_index' => ['required', 'integer', 'min:0', 'max:3'],
             'badge_text' => ['nullable', 'string', 'max:120'],
+            'file_url' => ['nullable', 'string', 'max:2048'],
             'reward_text' => ['nullable', 'string', 'max:180'],
             'expires_in_hours' => ['nullable', 'integer', 'min:1', 'max:720'],
             'status' => ['nullable', 'in:draft,published'],
         ]);
 
+        $prompt = trim((string) ($validated['prompt'] ?? ''));
+        $fileUrl = trim((string) ($validated['file_url'] ?? ''));
+
+        if ($prompt === '' && $fileUrl === '') {
+            return response()->json([
+                'message' => 'يجب إدخال نص السؤال أو رفع ملف للسؤال.',
+                'errors' => [
+                    'prompt' => ['يجب إدخال نص السؤال أو رفع ملف للسؤال.'],
+                ],
+            ], 422);
+        }
+
         $challenge = DailyChallenge::create([
             'user_id' => $user->id,
             'title' => $validated['title'],
             'subject' => $validated['subject'],
-            'prompt' => $validated['prompt'],
+            'prompt' => $prompt ?: null,
+            'file_url' => $validated['file_url'] ?? null,
             'options' => array_values(array_map(fn($value) => (string) $value, $validated['options'])),
             'correct_answer_index' => (int) $validated['correct_answer_index'],
             'badge_text' => $validated['badge_text'] ?? null,
@@ -229,6 +244,7 @@ class DailyChallengeController extends Controller
             'prompt' => $item->prompt,
             'options' => $options,
             'correct_answer' => $correctValue,
+            'file_url' => $item->file_url ?? null,
             'badge_text' => $item->badge_text,
             'reward_text' => $item->reward_text,
             'published_at' => $publishedAt->toDateTimeString(),
@@ -283,6 +299,7 @@ class DailyChallengeController extends Controller
             'correctIndex' => is_numeric($correctIndex) ? (int) $correctIndex : null,
             'correct_index' => is_numeric($correctIndex) ? (int) $correctIndex : null,
             'badge_text' => $item->badge_text,
+            'file_url' => $item->file_url ?? null,
             'reward_text' => $item->reward_text,
             'published_at' => $publishedAt->toDateTimeString(),
             'expires_in_hours' => $item->expires_in_hours,

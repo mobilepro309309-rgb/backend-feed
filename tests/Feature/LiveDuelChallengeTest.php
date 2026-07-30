@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Services\NotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class LiveDuelChallengeTest extends TestCase
@@ -57,6 +59,52 @@ class LiveDuelChallengeTest extends TestCase
             'feedable_type' => 'App\\Models\\Challenges\\LiveDuelChallenge',
             'status' => 'draft',
         ]);
+    }
+
+    public function test_it_can_store_per_question_attachments_and_uploaded_files(): void
+    {
+        Storage::fake('public');
+
+        $user = User::factory()->create([
+            'role' => 'question_post_admin',
+        ]);
+
+        $token = $user->createToken('test-token')->plainTextToken;
+        $uploadedFile = UploadedFile::fake()->image('sample-image.png');
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->post('/api/live-duel-challenges', [
+                'title' => 'تحدي مرفقات فردية',
+                'subject' => 'علوم',
+                'challenge_text' => 'اختر الإجابة الصحيحة',
+                'badge_text' => 'مرفق',
+                'question_count' => 2,
+                'seconds_per_question' => 10,
+                'status' => 'draft',
+                'questions' => [
+                    [
+                        'prompt' => 'ما هذا الشكل؟',
+                        'options' => ['1', '2', '3', '4'],
+                        'correctIndex' => 1,
+                        'attachment' => 'https://cdn.example.com/question-1.png',
+                    ],
+                    [
+                        'prompt' => '',
+                        'options' => ['1', '2', '3', '4'],
+                        'correctIndex' => 2,
+                        'attachment_file' => $uploadedFile,
+                    ],
+                ],
+            ]);
+
+        $response->assertCreated();
+
+        $challenge = $response->json('data');
+        $questions = $challenge['questions'] ?? [];
+
+        $this->assertSame('https://cdn.example.com/question-1.png', $questions[0]['attachment'] ?? null);
+        $this->assertNotEmpty($questions[1]['attachment'] ?? null);
+        $this->assertTrue(Storage::disk('public')->exists($questions[1]['attachment'] ?? ''));
     }
 
     public function test_it_sends_push_notifications_to_registered_students_when_live_duel_is_created(): void

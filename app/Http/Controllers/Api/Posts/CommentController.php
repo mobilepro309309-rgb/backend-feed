@@ -6,6 +6,8 @@ use App\Events\NewCommentEvent;
 use App\Http\Controllers\Controller;
 use App\Models\Comments\Comment;
 use App\Models\Posts\Post;
+use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 
 class CommentController extends Controller
@@ -23,7 +25,7 @@ class CommentController extends Controller
                 'message' => 'المستخدم غير مصادق عليه',
             ], 401);
         }
-
+        
         // Fetch top-level comments with eager-loaded user and replies
         $comments = $post->comments()
             ->with([
@@ -72,11 +74,21 @@ class CommentController extends Controller
         }
 
         $validated = $request->validate([
-            'content' => ['required', 'string', 'max:5000'],
+            'content' => ['nullable', 'string', 'max:5000'],
             'parent_id' => ['nullable', 'exists:post_comments,id'],
             'type' => ['nullable', 'in:text,image,voice,gif'],
             'metadata' => ['nullable', 'array'],
+            'file_url' => ['nullable', 'url'],
         ]);
+
+        // Ensure at least one of content or file_url is present
+        $hasContent = isset($validated['content']) && trim((string)$validated['content']) !== '';
+        $hasFileUrl = isset($validated['file_url']) && trim((string)$validated['file_url']) !== '';
+        if (!$hasContent && !$hasFileUrl) {
+            return response()->json([
+                'message' => 'يجب توفير نص التعليق أو مرفق (content أو file_url).',
+            ], 422);
+        }
 
         \Log::info('[CommentController] Storing comment:', [
             'postId' => $post->id,
@@ -105,9 +117,11 @@ class CommentController extends Controller
         $comment = $post->allComments()->create([
             'user_id' => $user->id,
             'parent_id' => $validated['parent_id'] ?? null,
-            'content' => $validated['content'],
-            'type' => $validated['type'] ?? 'text',
+            // store empty string if no content provided to satisfy DB non-null constraint
+            'content' => $validated['content'] ?? '',
+            'type' => $validated['type'] ?? ($hasFileUrl ? 'image' : 'text'),
             'metadata' => $validated['metadata'] ?? null,
+            'file_url' => $validated['file_url'] ?? null,
         ]);
 
         \Log::info('[CommentController] Comment created:', [
@@ -137,7 +151,52 @@ class CommentController extends Controller
 
         $formattedComment = $this->formatCommentForResponse($comment);
 
+        // Dispatch broadcast event for realtime updates
         broadcast(new NewCommentEvent((int) $post->id, $formattedComment))->toOthers();
+
+        // Send push notification to post owner when commenter is not the owner
+        try {
+            $postOwnerId = $post->user_id ?? null;
+            if ($postOwnerId && (int) $postOwnerId !== (int) $user->id) {
+                $recipient = User::find($postOwnerId);
+                if ($recipient) {
+                    $notificationService = app(NotificationService::class);
+
+                    $title = 'تعليق جديد على المنشور';
+                    $snippet = trim((string) ($comment->content ?? ''));
+                    if ($snippet === '' && $comment->file_url) {
+                        $snippet = 'أرفق ملفًا مرفقًا';
+                    }
+                    $body = $user->name ? ("{$user->name} علق على منشورك" . ($snippet ? ": {$snippet}" : '')) : 'لديك تعليق جديد على منشورك';
+
+                    $data = [
+                        'type' => 'new_comment',
+                        'post_id' => $post->id,
+                        'sender_id' => $user->id,
+                        'sender_name' => $user->name ?? null,
+                        'sender_avatar' => $user->avatar ?? $user->avatar_url ?? null,
+                        'comment_id' => $comment->id,
+                    ];
+
+                    \Log::info('COMMENT NOTIFICATION ATTEMPT:', [
+                        'recipient_id' => $recipient->id,
+                        'title' => $title,
+                        'body' => $body,
+                        'data' => $data,
+                    ]);
+
+                    $notificationService->sendNotification($recipient, $title, $body, $data);
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::error('COMMENT NOTIFICATION FAILED:', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'post_id' => $post->id,
+                'comment_id' => $comment->id,
+                'recipient_id' => $postOwnerId ?? null,
+            ]);
+        }
 
         return response()->json([
             'message' => 'تم إنشاء التعليق بنجاح',
@@ -158,6 +217,7 @@ class CommentController extends Controller
             'content' => $comment->content,
             'type' => $comment->type,
             'metadata' => $comment->metadata,
+            'file_url' => $comment->file_url,
             'created_at' => $comment->created_at,
             'updated_at' => $comment->updated_at,
             'user' => $comment->user ? [

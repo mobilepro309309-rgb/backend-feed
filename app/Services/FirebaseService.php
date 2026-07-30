@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Log;
 
 use Kreait\Firebase\{Factory, Messaging};
 use Kreait\Firebase\Exception\{FirebaseException, MessagingException};
-use Kreait\Firebase\Messaging\{CloudMessage, Notification as FirebaseNotification};
+use Kreait\Firebase\Messaging\{CloudMessage, Notification as FirebaseNotification, AndroidConfig, ApnsConfig};
 
 class FirebaseService
 {
@@ -129,11 +129,59 @@ class FirebaseService
             $message = CloudMessage::withTarget('token', $deviceToken)
                 ->withNotification(FirebaseNotification::create($title, $body));
 
+            // Ensure OS-level delivery for background/closed apps by setting high priority
+            // and specifying Android channel. APNs priority set for iOS.
+            try {
+                $androidConfig = AndroidConfig::fromArray([
+                    'priority' => 'high',
+                    'notification' => [
+                        'channel_id' => 'default',
+                        'default_sound' => true,
+                        'sound' => 'default',
+                        'visibility' => 'PUBLIC',
+                    ],
+                ]);
+
+                $apnsConfig = ApnsConfig::fromArray([
+                    'headers' => [
+                        'apns-priority' => '10',
+                        'apns-push-type' => 'alert',
+                    ],
+                    'payload' => [
+                        'aps' => [
+                            'sound' => 'default',
+                            'content-available' => 1,
+                            'alert' => [
+                                'title' => $title,
+                                'body' => $body,
+                            ],
+                        ],
+                    ],
+                ]);
+
+                $message = $message->withAndroidConfig($androidConfig)->withApnsConfig($apnsConfig);
+            } catch (\Throwable $e) {
+                // If the SDK doesn't support these helpers in the environment, continue without them
+            }
+
             if (! empty($normalizedData)) {
                 $message = $message->withData($normalizedData);
             }
 
+            // Expose title/body in data too for receivers that read the payload directly
+            $message = $message->withData(array_merge($normalizedData, [
+                'notification_title' => $title,
+                'notification_body' => $body,
+                'notification_type' => $data['type'] ?? 'general',
+            ]));
+
             $messageId = $this->messaging->send($message);
+
+            try {
+                Log::info('[FirebaseService] FCM message sent', ['token' => $deviceToken, 'message_id' => $messageId, 'data_keys' => array_keys($normalizedData)]);
+            } catch (\Throwable $e) {
+                // swallow logging errors to avoid breaking notification flow
+            }
 
             return [
                 'success' => true,

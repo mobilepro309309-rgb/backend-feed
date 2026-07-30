@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('title', 180);
             $table->string('subject', 120)->nullable();
             $table->text('intro_text')->nullable();
+            $table->string('file_url')->nullable();
             $table->string('badge_text', 120)->nullable();
             $table->text('reveal_text')->nullable();
             $table->text('tip_text')->nullable();

@@ -7,6 +7,7 @@ use App\Models\Challenges\LiveDuelChallenge;
 use App\Models\User;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 
 class LiveDuelChallengeController extends Controller
@@ -36,6 +37,7 @@ class LiveDuelChallengeController extends Controller
             'subject' => ['required', 'string', 'max:120'],
             'challenge_text' => ['nullable', 'string'],
             'badge_text' => ['nullable', 'string', 'max:80'],
+            'file_url' => ['nullable', 'string', 'max:2048'],
             'question_count' => ['required', 'integer', 'min:1', 'max:20'],
             'seconds_per_question' => ['required', 'integer', 'min:5', 'max:120'],
             'questions' => ['required', 'array', 'min:1'],
@@ -45,14 +47,18 @@ class LiveDuelChallengeController extends Controller
             'questions.*.correctIndex' => ['required', 'integer', 'min:0', 'max:3'],
             'questions.*.image.uri' => ['nullable', 'string'],
             'questions.*.image.name' => ['nullable', 'string'],
+            'questions.*.attachment' => ['nullable'],
+            'questions.*.attachment_file' => ['nullable', 'file'],
             'status' => ['nullable', 'in:draft,published'],
         ]);
 
         foreach ($validated['questions'] as $index => $question) {
             $prompt = trim((string) ($question['prompt'] ?? ''));
             $imageUri = trim((string) data_get($question, 'image.uri', ''));
+            $attachment = $this->resolveQuestionAttachment($request, $question, $index);
+            $validated['questions'][$index]['attachment'] = $attachment;
 
-            if ($prompt === '' && $imageUri === '') {
+            if ($prompt === '' && $imageUri === '' && $attachment === null) {
                 return response()->json([
                     'message' => 'يجب إدخال نص السؤال أو رفع صورة لكل سؤال',
                     'errors' => [
@@ -71,6 +77,7 @@ class LiveDuelChallengeController extends Controller
             'title' => $validated['title'],
             'subject' => $validated['subject'],
             'challenge_text' => $validated['challenge_text'] ?? null,
+            'file_url' => $validated['file_url'] ?? null,
             'badge_text' => $validated['badge_text'] ?? null,
             'question_count' => (int) $validated['question_count'],
             'seconds_per_question' => (int) $validated['seconds_per_question'],
@@ -116,5 +123,25 @@ class LiveDuelChallengeController extends Controller
             'message' => 'تم حفظ التحدي بنجاح',
             'data' => $challenge->fresh()->load('user'),
         ], 201);
+    }
+
+    private function resolveQuestionAttachment(Request $request, array $question, int $index): ?string
+    {
+        $existingAttachment = trim((string) data_get($question, 'attachment', ''));
+        if ($existingAttachment !== '') {
+            return $existingAttachment;
+        }
+
+        foreach (["questions.{$index}.attachment", "questions.{$index}.attachment_file"] as $field) {
+            $file = $request->file($field);
+
+            if ($file instanceof UploadedFile && $file->isValid()) {
+                $storedPath = $file->store('live-duel-attachments', 'public');
+
+                return $storedPath ?: null;
+            }
+        }
+
+        return null;
     }
 }

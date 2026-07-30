@@ -74,6 +74,7 @@ class MultipleChoiceQuestionController extends Controller
                 'correct_answer_index' => (int) ($item->correct_index ?? 0),
                 'correctIndex' => (int) ($item->correct_index ?? 0),
                 'badge_text' => $item->badge_text,
+                'file_url' => $item->file_url ?? null,
                 'quizType' => 'multiple_choice',
                 'questionType' => 'multiple_choice',
                 'type' => 'multiple_choice',
@@ -100,19 +101,33 @@ class MultipleChoiceQuestionController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:180'],
             'subject' => ['required', 'string', 'max:120'],
-            'question' => ['required', 'string'],
+            'question' => ['nullable', 'string'],
             'options' => ['required', 'array', 'min:2'],
             'options.*' => ['nullable', 'string'],
             'correct_index' => ['required', 'integer', 'min:0', 'max:3'],
             'badge_text' => ['nullable', 'string', 'max:120'],
+            'file_url' => ['nullable', 'string', 'max:2048'],
             'status' => ['nullable', 'in:draft,published'],
         ]);
+
+        $questionText = trim((string) ($validated['question'] ?? ''));
+        $fileUrl = trim((string) ($validated['file_url'] ?? ''));
+
+        if ($questionText === '' && $fileUrl === '') {
+            return response()->json([
+                'message' => 'يجب إدخال نص السؤال أو رفع ملف للسؤال.',
+                'errors' => [
+                    'question' => ['يجب إدخال نص السؤال أو رفع ملف للسؤال.'],
+                ],
+            ], 422);
+        }
 
         $question = MultipleChoiceQuestion::create([
             'user_id' => $user->id,
             'title' => $validated['title'],
             'subject' => $validated['subject'],
-            'question' => $validated['question'],
+            'question' => $questionText ?: null,
+            'file_url' => $validated['file_url'] ?? null,
             'options' => array_values(array_map(fn($value) => (string) $value, $validated['options'])),
             'correct_index' => (int) $validated['correct_index'],
             'badge_text' => $validated['badge_text'] ?? null,

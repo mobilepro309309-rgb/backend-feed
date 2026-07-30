@@ -32,6 +32,7 @@ class CloudCapsuleChallenge extends Model
         'title',
         'subject',
         'intro_text',
+        'file_url',
         'badge_text',
         'reveal_text',
         'tip_text',

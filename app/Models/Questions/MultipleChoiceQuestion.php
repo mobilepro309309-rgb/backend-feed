@@ -30,6 +30,7 @@ class MultipleChoiceQuestion extends Model
         'title',
         'subject',
         'question',
+        'file_url',
         'options',
         'correct_index',
         'badge_text',

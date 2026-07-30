@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
 use App\Http\Controllers\Api\Users\UserController;
+use App\Http\Controllers\Api\Users\UserProfileController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Posts\{CommentController, PostController};
 use App\Http\Controllers\Api\{InteractiveVideoController, LatestQuestionsController, QuizBatchController, UserSelectionController};
@@ -23,6 +24,7 @@ Broadcast::routes(['middleware' => ['auth:sanctum']]);
 $apiRoutes = function (): void {
     Route::post('/login', [AuthController::class, 'login'])->name('login');
     Route::post('/register', [AuthController::class, 'register'])->name('register');
+    Route::get('/security/device-response/status', [\App\Http\Controllers\Api\Security\PendingDeviceLoginController::class, 'status']);
     Route::get('/locations', [LocationController::class, 'index']);
 
     Route::get('/feed', [FeedController::class, 'index']);
@@ -74,15 +76,17 @@ $apiRoutes = function (): void {
         // Store device push token for authenticated user
         Route::post('/notifications/token', [NotificationController::class, 'storeToken']);
         Route::get('/notifications', [NotificationController::class, 'index']);
+        Route::post('/security/device-response', [\App\Http\Controllers\Api\Security\PendingDeviceLoginController::class, 'respond']);
 
-        Route::get('/user/profile', [UserController::class, 'show']);
+        Route::get('/user/profile', [UserProfileController::class, 'show']);
+        Route::put('/user/profile', [UserProfileController::class, 'update']);
         Route::post('/wallet/top-up', [WalletController::class, 'topUp']);
         // legacy profile route removed
         Route::get('/profile/{id}/latest-questions', [LatestQuestionsController::class, 'getUserQuestions']);
         // Alternate route for clients expecting `/users/{id}/latest-questions`
         // Alias route to support frontend calling /users/{id}/latest-questions
 
-        Route::put('/user/profile', [UserController::class, 'updateProfile']);
+        Route::put('/user/legacy-profile', [UserController::class, 'updateProfile']);
         Route::get('/nearby-students', [NearbyStudentsController::class, 'getNearbyCountOrList']);
         Route::get('/friends', [\App\Http\Controllers\Api\FriendshipController::class, 'index']);
         Route::post('/friends/resolve-for-user', [\App\Http\Controllers\Api\FriendshipController::class, 'resolveForUser']);
@@ -103,6 +107,7 @@ $apiRoutes = function (): void {
         Route::delete('/admin-roles/{user}', [AdminRoleController::class, 'destroy']);
 
         Route::get('/posts', [PostController::class, 'index']);
+        Route::get('/posts/{post}', [PostController::class, 'show']);
         Route::post('/posts', [PostController::class, 'store']);
         Route::post('/posts/{post}/react', [PostController::class, 'react']);
         Route::delete('/posts/{post}/react', [PostController::class, 'removeReaction']);

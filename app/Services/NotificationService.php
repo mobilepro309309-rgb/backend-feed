@@ -27,7 +27,7 @@ class NotificationService
         );
     }
 
-    public function sendNotification(User $user, string $title, string $body, array $data = []): array
+    public function sendNotification(User $user, string $title, string $body, array $data = [], ?string $excludeToken = null): array
     {
         $notification = Notification::create([
             'title' => $title,
@@ -40,14 +40,17 @@ class NotificationService
             'notification_id' => $notification->id,
             'user_id' => $user->id,
         ]);
-        $devices = UserDevice::where('user_id', $user->id)->get();
+
+        $devices = UserDevice::where('user_id', $user->id)
+            ->when($excludeToken, fn($query) => $query->where('fcm_token', '!=', $excludeToken))
+            ->get();
 
         $firebaseResults = [];
 
         if ($devices->isEmpty()) {
             $firebaseResults[] = [
                 'success' => false,
-                'error' => 'No device token registered for user',
+                'error' => 'No other device token registered for user',
             ];
         } else {
             foreach ($devices as $device) {
@@ -74,6 +77,64 @@ class NotificationService
                 $firebaseResults[] = [
                     'device_id' => $device->id,
                     'fcm_token' => $device->fcm_token,
+                    'result' => $result,
+                ];
+            }
+        }
+
+        return [
+            'notification' => $notification,
+            'delivery' => $delivery,
+            'firebase' => $firebaseResults,
+        ];
+    }
+
+    public function sendNotificationToDeviceTokens(User $user, string $title, string $body, array $data = [], array $deviceTokens = []): array
+    {
+        $notification = Notification::create([
+            'title' => $title,
+            'body' => $body,
+            'type' => $data['type'] ?? 'general',
+            'data' => $data,
+        ]);
+
+        $delivery = NotificationUser::firstOrCreate([
+            'notification_id' => $notification->id,
+            'user_id' => $user->id,
+        ]);
+
+        $firebaseResults = [];
+        $uniqueTokens = array_values(array_unique(array_filter($deviceTokens, fn($token) => is_string($token) && $token !== '')));
+
+        if (empty($uniqueTokens)) {
+            $firebaseResults[] = [
+                'success' => false,
+                'error' => 'No device tokens provided for notification delivery',
+            ];
+        } else {
+            foreach ($uniqueTokens as $token) {
+                try {
+                    $result = $this->firebaseService->sendNotification(
+                        $token,
+                        $title,
+                        $body,
+                        $data
+                    );
+                } catch (\Throwable $e) {
+                    Log::warning('Firebase notification dispatch failed for token', [
+                        'user_id' => $user->id,
+                        'fcm_token' => $token,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    $result = [
+                        'success' => false,
+                        'error' => $e->getMessage(),
+                    ];
+                }
+
+                $firebaseResults[] = [
+                    'fcm_token' => $token,
                     'result' => $result,
                 ];
             }

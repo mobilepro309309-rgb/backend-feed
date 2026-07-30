@@ -35,6 +35,7 @@ class CloudCapsuleChallengeController extends Controller
             'title' => ['required', 'string', 'max:180'],
             'subject' => ['required', 'string', 'max:120'],
             'intro_text' => ['nullable', 'string'],
+            'file_url' => ['nullable', 'string', 'max:2048'],
             'badge_text' => ['nullable', 'string', 'max:120'],
             'reveal_text' => ['required', 'string'],
             'tip_text' => ['nullable', 'string'],
@@ -49,6 +50,7 @@ class CloudCapsuleChallengeController extends Controller
         $challenge->title = $validated['title'];
         $challenge->subject = $validated['subject'];
         $challenge->intro_text = $validated['intro_text'] ?? null;
+        $challenge->file_url = $validated['file_url'] ?? null;
         $challenge->badge_text = $validated['badge_text'] ?? null;
         $challenge->reveal_text = $validated['reveal_text'];
         $challenge->tip_text = $validated['tip_text'] ?? null;
@@ -98,6 +100,7 @@ class CloudCapsuleChallengeController extends Controller
                 'id' => $challenge->id,
                 'title' => $challenge->title,
                 'subject' => $challenge->subject,
+                'file_url' => $challenge->file_url ?? null,
                 'status' => $challenge->status,
                 'user' => [
                     'id' => $user->id,

@@ -18,6 +18,7 @@ class MultipleChoiceQuestionResource extends JsonResource
         return [
             'id' => $this->id,
             'user_id' => $this->user_id,
+            'file_url' => $this->file_url ?? null,
             'title' => $this->title,
             'subject' => $this->subject,
             'question_text' => $this->question,

@@ -20,6 +20,7 @@ return new class extends Migration
             $table->string('right_label', 80)->nullable();
             $table->text('left_text')->nullable();
             $table->text('right_text')->nullable();
+            $table->string('file_url')->nullable();
             $table->text('explanation')->nullable();
             $table->string('badge_text', 120)->nullable();
             $table->enum('status', ['draft', 'published'])->default('draft');

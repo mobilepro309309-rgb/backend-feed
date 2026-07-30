@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('title', 180);
             $table->string('subject', 120)->nullable();
             $table->text('prompt')->nullable();
+            $table->string('file_url')->nullable();
             $table->boolean('correct_answer')->default(true);
             $table->text('explanation')->nullable();
             $table->string('badge_text', 120)->nullable();

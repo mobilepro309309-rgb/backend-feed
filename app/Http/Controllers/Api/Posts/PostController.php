@@ -84,7 +84,7 @@ class PostController extends Controller
         }
 
         $validated = $request->validate([
-            'content' => ['required', 'string'],
+            'content' => ['required_without:attachments', 'string'],
             'subject' => ['required', 'string', 'max:120'],
             'image_url' => ['nullable', 'string'],
             'attachments' => ['nullable', 'array'],
@@ -213,6 +213,48 @@ class PostController extends Controller
         return response()->json([
             'message' => 'تم إزالة تفاعل المنشور',
             'likes_count' => $payload['likes_count'],
+        ]);
+    }
+
+    public function show(Request $request, Post $post)
+    {
+        $user = $request->user();
+        $post->load(['user' => function ($query) {
+            $query->select('id', 'name');
+        }]);
+
+        $likesCount = DB::table('post_reactions')
+            ->where('post_id', $post->id)
+            ->count();
+
+        $userReaction = null;
+        if ($user) {
+            $userReaction = DB::table('post_reactions')
+                ->where('post_id', $post->id)
+                ->where('user_id', $user->id)
+                ->value('type');
+        }
+
+        return response()->json([
+            'data' => [
+                'id' => $post->id,
+                'content' => $post->content,
+                'subject' => $post->subject,
+                'image_url' => $post->image_url,
+                'attachments' => $post->attachments,
+                'status' => $post->status,
+                'published_at' => $post->published_at,
+                'likes' => $likesCount,
+                'comments' => $post->comments,
+                'shares' => $post->shares,
+                'user_reaction' => $userReaction,
+                'created_at' => $post->created_at,
+                'updated_at' => $post->updated_at,
+                'user' => $post->user ? [
+                    'id' => $post->user->id,
+                    'name' => $post->user->name,
+                ] : null,
+            ],
         ]);
     }
 }
