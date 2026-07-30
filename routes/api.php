@@ -76,6 +76,7 @@ $apiRoutes = function (): void {
         // Store device push token for authenticated user
         Route::post('/notifications/token', [NotificationController::class, 'storeToken']);
         Route::get('/notifications', [NotificationController::class, 'index']);
+        Route::post('/notifications/mark-read', [NotificationController::class, 'markRead']);
         Route::post('/security/device-response', [\App\Http\Controllers\Api\Security\PendingDeviceLoginController::class, 'respond']);
 
         Route::get('/user/profile', [UserProfileController::class, 'show']);
@@ -109,6 +110,7 @@ $apiRoutes = function (): void {
         Route::get('/posts', [PostController::class, 'index']);
         Route::get('/posts/{post}', [PostController::class, 'show']);
         Route::post('/posts', [PostController::class, 'store']);
+        Route::post('/posts/{post}/vote', [PostController::class, 'vote']);
         Route::post('/posts/{post}/react', [PostController::class, 'react']);
         Route::delete('/posts/{post}/react', [PostController::class, 'removeReaction']);
 

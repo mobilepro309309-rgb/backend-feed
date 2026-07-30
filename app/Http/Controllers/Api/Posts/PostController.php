@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Posts;
 
 use App\Http\Controllers\Controller;
+use App\Models\PostVote;
 use App\Models\Posts\Post;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -84,10 +85,10 @@ class PostController extends Controller
         }
 
         $validated = $request->validate([
-            'content' => ['required_without:attachments', 'string'],
+            'content' => ['nullable', 'string', 'required_without:attachments'],
             'subject' => ['required', 'string', 'max:120'],
             'image_url' => ['nullable', 'string'],
-            'attachments' => ['nullable', 'array'],
+            'attachments' => ['nullable', 'array', 'required_without:content'],
             'attachments.*.id' => ['nullable', 'string'],
             'attachments.*.name' => ['nullable', 'string'],
             'attachments.*.uri' => ['nullable', 'string'],
@@ -112,7 +113,7 @@ class PostController extends Controller
         ], 201);
     }
 
-    public function react(Request $request, Post $post)
+    public function vote(Request $request, Post $post)
     {
         $user = $request->user();
 
@@ -123,69 +124,74 @@ class PostController extends Controller
         }
 
         $validated = $request->validate([
-            'type' => 'required|in:like,love,haha,wow,sad,angry',
+            'type' => ['required', 'in:up,down,1,-1'],
         ]);
 
-        $type = $validated['type'];
+        $voteType = $validated['type'];
+        $normalizedVote = in_array($voteType, ['up', 1, '1'], true) ? 1 : -1;
+        $userVoteLabel = $normalizedVote === 1 ? 'up' : 'down';
 
-        $payload = DB::transaction(function () use ($post, $user, $type) {
-            $existingReaction = DB::table('post_reactions')
-                ->where('post_id', $post->id)
+        $payload = DB::transaction(function () use ($post, $user, $normalizedVote, $userVoteLabel) {
+            $existingVote = PostVote::where('post_id', $post->id)
                 ->where('user_id', $user->id)
                 ->first();
 
-            if ($existingReaction) {
-                if ($existingReaction->type === $type) {
-                    DB::table('post_reactions')
-                        ->where('post_id', $post->id)
-                        ->where('user_id', $user->id)
-                        ->delete();
+            $voteRemoved = false;
+            $previousVoteLabel = null;
 
-                    $newLikesCount = DB::table('post_reactions')
-                        ->where('post_id', $post->id)
-                        ->count();
+            if ($existingVote) {
+                $previousVoteLabel = $existingVote->vote_type === 1 ? 'up' : 'down';
 
-                    return [
-                        'type' => null,
-                        'likes_count' => $newLikesCount,
-                    ];
+                if ($existingVote->vote_type === $normalizedVote) {
+                    $existingVote->delete();
+                    $voteRemoved = true;
+                    $post->decrement($normalizedVote === 1 ? 'upvotes_count' : 'downvotes_count');
+                    $post->decrement('votes_score', $normalizedVote);
+                } else {
+                    $existingVote->update(['vote_type' => $normalizedVote]);
+                    if ($normalizedVote === 1) {
+                        $post->decrement('downvotes_count');
+                        $post->increment('upvotes_count');
+                    } else {
+                        $post->decrement('upvotes_count');
+                        $post->increment('downvotes_count');
+                    }
+                    $post->increment('votes_score', $normalizedVote * 2);
                 }
-
-                DB::table('post_reactions')
-                    ->where('post_id', $post->id)
-                    ->where('user_id', $user->id)
-                    ->update([
-                        'type' => $type,
-                        'updated_at' => now(),
-                    ]);
             } else {
-                DB::table('post_reactions')->insert([
+                PostVote::create([
                     'post_id' => $post->id,
                     'user_id' => $user->id,
-                    'type' => $type,
-                    'created_at' => now(),
-                    'updated_at' => now(),
+                    'vote_type' => $normalizedVote,
                 ]);
+
+                if ($normalizedVote === 1) {
+                    $post->increment('upvotes_count');
+                } else {
+                    $post->increment('downvotes_count');
+                }
+                $post->increment('votes_score', $normalizedVote);
             }
 
-            $newLikesCount = DB::table('post_reactions')
-                ->where('post_id', $post->id)
-                ->count();
+            $post->refresh();
 
             return [
-                'type' => $type,
-                'likes_count' => $newLikesCount,
+                'post_id' => $post->id,
+                'user_vote' => $voteRemoved ? null : $userVoteLabel,
+                'votes_score' => $post->votes_score,
+                'upvotes_count' => $post->upvotes_count,
+                'downvotes_count' => $post->downvotes_count,
             ];
         });
 
         return response()->json([
-            'message' => 'تم تحديث تفاعل المنشور',
-            'type' => $payload['type'],
-            'likes_count' => $payload['likes_count'],
+            'success' => true,
+            'message' => 'Vote updated successfully',
+            'data' => $payload,
         ]);
     }
 
-    public function removeReaction(Request $request, Post $post)
+    public function react(Request $request, Post $post)
     {
         $user = $request->user();
 

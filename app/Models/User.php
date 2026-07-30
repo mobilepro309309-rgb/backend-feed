@@ -13,6 +13,7 @@ use App\Models\Questions\{MultipleChoiceQuestion, TrueFalseQuestion};
 use App\Models\Posts\Post;
 use App\Models\Users\UserAddress;
 use App\Models\Friendship;
+use App\Models\PostVote;
 use App\Models\Wallet;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
@@ -127,6 +128,11 @@ class User extends Authenticatable
     public function posts()
     {
         return $this->hasMany(Post::class);
+    }
+
+    public function postVotes(): HasMany
+    {
+        return $this->hasMany(PostVote::class, 'user_id');
     }
 
     public function savedPosts(): BelongsToMany

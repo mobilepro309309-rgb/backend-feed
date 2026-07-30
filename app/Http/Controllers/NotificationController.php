@@ -113,14 +113,21 @@ $deviceToken = $validated['fcm_token'];
             ], 401);
         }
 
-        $items = NotificationUser::where('user_id', $user->id)
+        $limit = (int) $request->query('limit', 0);
+
+        $query = NotificationUser::where('user_id', $user->id)
             ->with(['notification'])
-            ->orderByDesc('created_at')
-            ->get()
+            ->orderByDesc('created_at');
+
+        if ($limit > 0) {
+            $query->limit($limit);
+        }
+
+        $items = $query->get()
             ->map(function (NotificationUser $delivery) {
                 $notification = $delivery->notification;
                 $payload = $notification?->data ?? [];
-                $rawType = $payload['type'] ?? $notification?->type ?? 'general';
+                $rawType = data_get($payload, 'type') ?? $notification?->type ?? 'general';
                 $normalizedType = match ($rawType) {
                     'new_question' => 'multiple_choice',
                     'new_true_false' => 'true_false',
@@ -130,32 +137,41 @@ $deviceToken = $validated['fcm_token'];
                     'new_cloud_capsule' => 'post',
                     'new_live_duel' => 'live_duel',
                     'new_video' => 'video',
-                    'friend_request' => 'friend_request',
-                    'friend_request_accepted' => 'friend_request_accepted',
+                    'new_comment' => 'comment',
+                    'comment' => 'comment',
+                    'comments' => 'comment',
                     default => $rawType,
                 };
 
                 $isQuizType = in_array($normalizedType, ['multiple_choice', 'true_false', 'find_the_bug', 'daily_challenge', 'comparison_card', 'cheat_sheet_flip', 'live_duel', 'question', 'quiz'], true);
                 $isVideoType = in_array($normalizedType, ['video', 'videos', 'new_video'], true);
-                $isFriendRequest = $normalizedType === 'friend_request' || $normalizedType === 'friend_request_accepted' || data_get($payload, 'type') === 'friend_request' || data_get($payload, 'type') === 'friend_request_accepted';
-                $questionId = data_get($payload, 'question_id') ?? data_get($payload, 'quiz_id') ?? data_get($payload, 'challenge_id') ?? data_get($payload, 'comparison_id') ?? data_get($payload, 'capsule_id') ?? data_get($payload, 'id');
+                $isFriendRequest = in_array($normalizedType, ['friend_request', 'friend_request_accepted'], true);
+                $isCommentType = $normalizedType === 'comment';
                 $isChatType = $normalizedType === 'chat_message' || data_get($payload, 'type') === 'chat_message' || data_get($payload, 'targetType') === 'chat' || data_get($payload, 'target_type') === 'chat';
-                $targetId = data_get($payload, 'target_id') ?? data_get($payload, 'targetId') ?? data_get($payload, 'chat_id') ?? data_get($payload, 'target_id') ?? data_get($payload, 'feed_id') ?? $questionId;
+                $questionId = data_get($payload, 'question_id') ?? data_get($payload, 'quiz_id') ?? data_get($payload, 'challenge_id') ?? data_get($payload, 'comparison_id') ?? data_get($payload, 'capsule_id') ?? data_get($payload, 'id');
+                $targetId = data_get($payload, 'target_id') ?? data_get($payload, 'targetId') ?? data_get($payload, 'post_id') ?? data_get($payload, 'postId') ?? data_get($payload, 'chat_id') ?? data_get($payload, 'feed_id') ?? $questionId;
                 $targetType = data_get($payload, 'target_type') ?? data_get($payload, 'targetType') ?? ($isChatType ? 'chat' : ($isVideoType ? 'videos' : ($isQuizType ? 'quiz' : ($isFriendRequest ? 'friends' : 'post'))));
+                $actionType = $isCommentType ? 'comments' : ($isFriendRequest ? 'friends' : ($isVideoType ? 'videos' : ($isChatType ? 'chat' : ($isQuizType ? 'quiz' : 'post'))));
+                $commentId = data_get($payload, 'comment_id') ?? data_get($payload, 'commentId') ?? null;
+                $postId = data_get($payload, 'post_id') ?? data_get($payload, 'postId') ?? $targetId;
 
                 return [
                     'id' => 'notif-' . $notification?->id,
+                    'notificationId' => $notification?->id,
+                    'notification_id' => $notification?->id,
                     'title' => $notification?->title ?? 'إشعار جديد',
                     'body' => $notification?->body ?? '',
                     'type' => $normalizedType,
-                    'actionType' => $isChatType ? 'chat' : ($isVideoType ? 'videos' : ($isQuizType ? 'quiz' : ($isFriendRequest ? 'friends' : 'post'))),
+                    'actionType' => $actionType,
                     'questionSnippet' => $questionId ? 'سؤال #' . $questionId : null,
                     'targetId' => $targetId,
                     'targetType' => $targetType,
-                    'chat_id' => data_get($payload, 'chat_id') ?? null,
-                    'sender_id' => data_get($payload, 'sender_id') ?? null,
-                    'sender_name' => data_get($payload, 'sender_name') ?? null,
-                    'sender_avatar' => data_get($payload, 'sender_avatar') ?? null,
+                    'post_id' => $postId,
+                    'comment_id' => $commentId,
+                    'chat_id' => data_get($payload, 'chat_id') ?? data_get($payload, 'chatId') ?? null,
+                    'sender_id' => data_get($payload, 'sender_id') ?? data_get($payload, 'senderId') ?? null,
+                    'sender_name' => data_get($payload, 'sender_name') ?? data_get($payload, 'senderName') ?? null,
+                    'sender_avatar' => data_get($payload, 'sender_avatar') ?? data_get($payload, 'senderAvatar') ?? null,
                     'targetPostId' => $targetId,
                     'unread' => ! $delivery->read_at,
                     'accent' => $isQuizType ? '#3B82F6' : '#10B981',
@@ -169,6 +185,53 @@ $deviceToken = $validated['fcm_token'];
         return response()->json([
             'success' => true,
             'data' => $items,
+        ]);
+    }
+
+    public function markRead(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthenticated.',
+            ], 401);
+        }
+
+        $payload = $request->all();
+        $notificationIds = [];
+
+        if (! empty($payload['notification_id'])) {
+            $notificationIds[] = (int) filter_var($payload['notification_id'], FILTER_SANITIZE_NUMBER_INT);
+        }
+
+        if (! empty($payload['ids']) && is_array($payload['ids'])) {
+            foreach ($payload['ids'] as $idValue) {
+                if ($idValue === null || $idValue === '') {
+                    continue;
+                }
+                $notificationIds[] = (int) filter_var($idValue, FILTER_SANITIZE_NUMBER_INT);
+            }
+        }
+
+        $notificationIds = array_values(array_unique(array_filter($notificationIds, fn ($id) => $id > 0)));
+
+        if (empty($notificationIds)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No valid notification IDs provided.',
+            ], 422);
+        }
+
+        $updated = NotificationUser::where('user_id', $user->id)
+            ->whereIn('notification_id', $notificationIds)
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
+
+        return response()->json([
+            'success' => true,
+            'updated' => $updated,
         ]);
     }
 

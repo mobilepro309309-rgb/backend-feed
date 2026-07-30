@@ -6,6 +6,7 @@ namespace App\Models\Posts;
 
 use App\Models\Comments\Comment;
 use App\Models\Feed;
+use App\Models\PostVote;
 use App\Models\User;
 use App\Traits\SyncsToFeed;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -37,6 +38,9 @@ class Post extends Model
         'attachments',
         'status',
         'published_at',
+        'votes_score',
+        'upvotes_count',
+        'downvotes_count',
     ];
 
     protected $appends = ['likes', 'comments', 'shares'];
@@ -64,6 +68,11 @@ class Post extends Model
         return $this->belongsToMany(User::class, 'post_reactions', 'post_id', 'user_id')
             ->withPivot('type')
             ->withTimestamps();
+    }
+
+    public function votes(): HasMany
+    {
+        return $this->hasMany(PostVote::class, 'post_id');
     }
 
     /**

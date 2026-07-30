@@ -171,6 +171,9 @@ class CommentController extends Controller
 
                     $data = [
                         'type' => 'new_comment',
+                        'target_type' => 'post',
+                        'action_type' => 'comments',
+                        'target_id' => $post->id,
                         'post_id' => $post->id,
                         'sender_id' => $user->id,
                         'sender_name' => $user->name ?? null,

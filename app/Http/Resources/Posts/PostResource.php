@@ -23,6 +23,17 @@ class PostResource extends JsonResource
             'likes' => $this->likes,
             'comments' => $this->comments,
             'shares' => $this->shares,
+            'votes_score' => $this->votes_score ?? 0,
+            'upvotes_count' => $this->upvotes_count ?? 0,
+            'downvotes_count' => $this->downvotes_count ?? 0,
+            'user_vote' => $this->whenLoaded('votes', function () {
+                $vote = $this->votes->first();
+                if (! $vote) {
+                    return null;
+                }
+
+                return $vote->vote_type === 1 ? 'up' : ($vote->vote_type === -1 ? 'down' : null);
+            }),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
             // include the user when the relation was eager-loaded
