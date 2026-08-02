@@ -14,6 +14,7 @@ use App\Models\Posts\Post;
 use App\Models\Users\UserAddress;
 use App\Models\Friendship;
 use App\Models\PostVote;
+use App\Models\TeacherScope;
 use App\Models\Wallet;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
@@ -220,6 +221,20 @@ class User extends Authenticatable
     public function wallet()
     {
         return $this->hasOne(Wallet::class);
+    }
+
+    public function teacherScopes(): HasMany
+    {
+        return $this->hasMany(TeacherScope::class);
+    }
+
+    public function hasScope($grade, $subject, $permission = 'can_answer')
+    {
+        return $this->teacherScopes()
+            ->where('school_grade', (string) $grade)
+            ->where('subject', $subject)
+            ->where($permission, true)
+            ->exists();
     }
 
     public function friendsOfMine(): BelongsToMany

@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Posts\{CommentController, PostController};
 use App\Http\Controllers\Api\{InteractiveVideoController, LatestQuestionsController, QuizBatchController, UserSelectionController};
 use App\Http\Controllers\Api\Admin\AdminRoleController;
+use App\Http\Controllers\Api\Admin\TeacherManagementController;
 use App\Http\Controllers\Api\Location\{LocationController, NearbyStudentsController};
 use App\Http\Controllers\Api\Challenges\{CloudCapsuleChallengeController, ComparisonChallengeController, DailyChallengeController, FindTheBugChallengeController, LiveDuelChallengeController};
 use App\Http\Controllers\Api\Challenges\CheatSheetController;
@@ -106,6 +107,14 @@ $apiRoutes = function (): void {
         Route::post('/admin-roles', [AdminRoleController::class, 'store']);
         Route::put('/admin-roles/{user}', [AdminRoleController::class, 'update']);
         Route::delete('/admin-roles/{user}', [AdminRoleController::class, 'destroy']);
+
+        Route::prefix('admin/teachers')->group(function () {
+            Route::get('/', [TeacherManagementController::class, 'index']);
+            Route::post('/assign-scope', [TeacherManagementController::class, 'assignScope']);
+            Route::delete('/scopes/{id}', [TeacherManagementController::class, 'removeScope']);
+        });
+
+        Route::get('/admin/users/lookup/{id}', [TeacherManagementController::class, 'lookupUser']);
 
         Route::get('/posts', [PostController::class, 'index']);
         Route::get('/posts/{post}', [PostController::class, 'show']);
