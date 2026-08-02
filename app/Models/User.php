@@ -25,6 +25,63 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
 
+    public function setSchoolGradeAttribute($value): void
+    {
+        $this->attributes['school_grade'] = static::normalizeSchoolGradeValue($value);
+    }
+
+    public static function normalizeSchoolGradeValue($value): ?string
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+
+        $raw = trim((string) $value);
+        if (preg_match('/\d/', $raw)) {
+            return (string) preg_replace('/\D+/', '', $raw);
+        }
+
+        $clean = preg_replace('/^ال(?:ـ)?/u', '', $raw);
+        $clean = preg_replace('/\s+/u', '', $clean);
+        $clean = str_replace(['أ', 'إ', 'آ'], 'ا', $clean);
+        $clean = strtolower($clean);
+
+        $map = [
+            'اول' => '1',
+            'اولى' => '1',
+            'ثاني' => '2',
+            'ثانية' => '2',
+            'ثالث' => '3',
+            'ثالثة' => '3',
+            'رابع' => '4',
+            'رابعة' => '4',
+            'خامس' => '5',
+            'خامسة' => '5',
+            'سادس' => '6',
+            'سادسة' => '6',
+            'سابع' => '7',
+            'سابعة' => '7',
+            'ثامن' => '8',
+            'ثامنة' => '8',
+            'تاسع' => '9',
+            'تاسعة' => '9',
+            'عاشر' => '10',
+            'عاشرة' => '10',
+            'حادي عشر' => '11',
+            'الحادية عشرة' => '11',
+            'ثاني عشر' => '12',
+            'الثانية عشرة' => '12',
+        ];
+
+        foreach ($map as $label => $numeric) {
+            if (str_contains($clean, $label)) {
+                return $numeric;
+            }
+        }
+
+        return $raw;
+    }
+
     /**
      * The attributes that are mass assignable.
      *
@@ -194,6 +251,13 @@ class User extends Authenticatable
     public function getFriendsAttribute()
     {
         return $this->friendsOfMine->merge($this->friendOf);
+    }
+
+    public function isAdmin(): bool
+    {
+        $role = strtolower((string) ($this->role ?? ''));
+
+        return $role === 'admin' || $role === 'super_admin';
     }
 
     public function setPresence(bool $isOnline): void

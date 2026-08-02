@@ -118,7 +118,7 @@ class UserSelectionController extends Controller
 
     private function getSelectableUserFields(): array
     {
-        $fields = ['id', 'name', 'role'];
+        $fields = ['id', 'name', 'role', 'gender'];
 
         if (Schema::hasColumn('users', 'avatar')) {
             $fields[] = 'avatar';
@@ -142,8 +142,10 @@ class UserSelectionController extends Controller
             'name' => $user->name,
             'label' => $user->name,
             'role' => $user->role,
+            'gender' => $user->gender ?? null,
             'avatar' => $user->avatar ?? null,
             'school_grade' => $user->school_grade ?? null,
+            'grade' => $user->school_grade ?? $user->grade ?? $user->grade_level ?? $user->academic_year ?? $user->stage ?? null,
             'location' => $user->location ?? null,
             'statusText' => 'متاح الآن',
             'statusColor' => '#22c55e',

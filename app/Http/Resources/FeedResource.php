@@ -16,6 +16,9 @@ class FeedResource extends JsonResource
     public function toArray($request): array
     {
         $feedable = $this->feedable;
+        if ($feedable) {
+            $feedable->loadMissing('user');
+        }
 
         $details = $feedable ? match (get_class($feedable)) {
             \App\Models\Posts\Post::class => new PostResource($feedable),
@@ -28,6 +31,18 @@ class FeedResource extends JsonResource
             \App\Models\Challenges\DailyChallenge::class => new DailyChallengeResource($feedable),
             default => null,
         } : null;
+
+        if (is_array($details) && $feedable && $feedable->relationLoaded('user') && $feedable->user) {
+            $details['user'] = [
+                'id' => $feedable->user->id ?? null,
+                'name' => $feedable->user->name ?? null,
+                'avatar' => $feedable->user->avatar_url ?? $feedable->user->profile_image ?? $feedable->user->avatar ?? null,
+                'role' => $feedable->user->role ?? null,
+                'gender' => $feedable->user->gender ?? null,
+                'school_grade' => $feedable->user->school_grade ?? null,
+                'grade' => $feedable->user->school_grade ?? null,
+            ];
+        }
 
         $type = $feedable ? match (get_class($feedable)) {
             \App\Models\Posts\Post::class => 'post',

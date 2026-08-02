@@ -21,7 +21,7 @@ class UserController extends Controller
     public function updateProfile(Request $request)
     {
         $validated = $request->validate([
-            'school_grade' => 'nullable|in:اولى,ثانية,ثالثة,اعدادي,ثانوي',
+            'school_grade' => 'nullable|in:1,2,3,4,5,6,7,8,9,10,11,12,اولى,ثانية,ثالثة,رابعة,خامسة,سادسة,سابعة,الثامنة,التاسعة,العاشرة,الحادية عشرة,الثانية عشرة,اعدادي,ثانوي',
             'gender' => 'nullable|in:ولد,بنت',
             'location' => 'nullable|string|max:255',
             'latitude' => 'nullable|numeric|between:-90,90',
@@ -136,8 +136,9 @@ class UserController extends Controller
             'email' => $user->email,
             'phone' => $user->phone,
             'role' => $user->role,
-            'school_grade' => $user->school_grade,
             'gender' => $user->gender,
+            'school_grade' => $user->school_grade,
+            'grade' => $user->school_grade ?? $user->grade ?? $user->grade_level ?? $user->academic_year ?? $user->stage ?? null,
             'location' => $address?->village_name ?? $address?->governorate ?? null,
             'latitude' => $address?->latitude,
             'longitude' => $address?->longitude,

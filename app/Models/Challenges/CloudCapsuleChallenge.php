@@ -31,6 +31,8 @@ class CloudCapsuleChallenge extends Model
         'user_id',
         'title',
         'subject',
+        'school_grade',
+        'term',
         'intro_text',
         'file_url',
         'badge_text',

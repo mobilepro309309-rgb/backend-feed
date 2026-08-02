@@ -29,6 +29,8 @@ class MultipleChoiceQuestion extends Model
         'user_id',
         'title',
         'subject',
+        'school_grade',
+        'term',
         'question',
         'file_url',
         'options',

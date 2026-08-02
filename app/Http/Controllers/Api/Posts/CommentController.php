@@ -90,6 +90,16 @@ class CommentController extends Controller
             ], 422);
         }
 
+        $post->loadMissing('user');
+        $authorGender = $this->normalizeGender($post->user?->gender);
+        $userGender = $this->normalizeGender($user->gender);
+
+        if (!$user->isAdmin() && (!$authorGender || !$userGender || $userGender !== $authorGender)) {
+            return response()->json([
+                'message' => 'غير مسموح بالتعليق على هذا المنشور',
+            ], 403);
+        }
+
         \Log::info('[CommentController] Storing comment:', [
             'postId' => $post->id,
             'userId' => $user->id,
@@ -205,6 +215,25 @@ class CommentController extends Controller
             'message' => 'تم إنشاء التعليق بنجاح',
             'data' => $formattedComment,
         ], 201);
+    }
+
+    private function normalizeGender(?string $gender): ?string
+    {
+        if ($gender === null || $gender === '') {
+            return null;
+        }
+
+        $normalized = strtolower(trim((string) $gender));
+
+        if (in_array($normalized, ['male', 'ذكر', 'ولد', 'boy', 'man', 'm'], true)) {
+            return 'male';
+        }
+
+        if (in_array($normalized, ['female', 'انثى', 'بنت', 'girl', 'woman', 'f'], true)) {
+            return 'female';
+        }
+
+        return $normalized;
     }
 
     /**

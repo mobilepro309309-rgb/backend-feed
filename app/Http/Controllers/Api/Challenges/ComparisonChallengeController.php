@@ -97,6 +97,8 @@ class ComparisonChallengeController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:180'],
             'subject' => ['required', 'string', 'max:120'],
+            'school_grade' => ['nullable', 'string'],
+            'term' => ['nullable', 'in:1,2'],
             'left_label' => ['nullable', 'string', 'max:80'],
             'right_label' => ['nullable', 'string', 'max:80'],
             'left_text' => ['required', 'string'],
@@ -107,10 +109,15 @@ class ComparisonChallengeController extends Controller
             'status' => ['nullable', 'in:draft,published'],
         ]);
 
+        $validated['school_grade'] = $request->input('school_grade', $user->school_grade ?? null);
+        $validated['term'] = $request->input('term', $user->term ?? 1);
+
         $challenge = ComparisonChallenge::create([
             'user_id' => $user->id,
             'title' => $validated['title'],
             'subject' => $validated['subject'],
+            'school_grade' => $validated['school_grade'] ?? null,
+            'term' => (int) ($validated['term'] ?? 1),
             'left_label' => $validated['left_label'] ?? null,
             'right_label' => $validated['right_label'] ?? null,
             'left_text' => $validated['left_text'],
@@ -123,7 +130,17 @@ class ComparisonChallengeController extends Controller
         ]);
 
         try {
-            $recipients = User::whereHas('devices')->get();
+            $comparisonGrade = (string) ($challenge->school_grade ?? '');
+            $recipients = User::where('role', 'user')
+                ->where('id', '!=', $challenge->user_id)
+                ->whereHas('devices')
+                ->when($comparisonGrade !== '', function ($query) use ($comparisonGrade) {
+                    $query->where(function ($gradeQuery) use ($comparisonGrade) {
+                        $gradeQuery->where('school_grade', $comparisonGrade)
+                            ->orWhere('school_grade', (int) $comparisonGrade);
+                    });
+                })
+                ->get();
 
             foreach ($recipients as $recipient) {
                 try {

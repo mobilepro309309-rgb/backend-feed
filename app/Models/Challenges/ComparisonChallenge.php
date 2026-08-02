@@ -30,6 +30,8 @@ class ComparisonChallenge extends Model
         'user_id',
         'title',
         'subject',
+        'school_grade',
+        'term',
         'left_label',
         'right_label',
         'left_text',

@@ -12,6 +12,8 @@ class RegisterRequest extends BaseFormRequest
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'unique:users'],
             'password' => ['required', 'string', 'min:6'],
+            'gender' => ['nullable', 'string', 'max:255'],
+            'school_grade' => ['nullable', 'string', 'max:255'],
             'governorate' => ['nullable', 'string', 'max:255'],
             'district' => ['nullable', 'string', 'max:255'],
             'village' => ['nullable', 'string', 'max:255'],

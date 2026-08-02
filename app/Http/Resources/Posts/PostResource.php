@@ -39,12 +39,18 @@ class PostResource extends JsonResource
             // include the user when the relation was eager-loaded
             'user' => $this->whenLoaded('user', function () {
                 $user = $this->user;
-                if (! $user) return null;
+                if (! $user) {
+                    return null;
+                }
 
                 return [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'avatar' => $user->avatar ?? $user->avatar_url ?? null,
+                    'id' => $user->id ?? null,
+                    'name' => $user->name ?? null,
+                    'avatar' => $user->avatar_url ?? $user->profile_image ?? $user->avatar ?? null,
+                    'role' => $user->role ?? null,
+                    'gender' => $user->gender ?? $user->profile?->gender ?? null,
+                    'school_grade' => $user->school_grade ?? null,
+                    'grade' => $user->school_grade ?? null,
                 ];
             }),
         ];

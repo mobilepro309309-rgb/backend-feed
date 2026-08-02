@@ -145,6 +145,8 @@ class AuthController extends Controller
                 'name' => $validated['name'],
                 'phone' => $phone,
                 'password' => Hash::make($validated['password']),
+                'gender' => $validated['gender'] ?? null,
+                'school_grade' => $validated['school_grade'] ?? null,
             ]);
 
             $addressData = [
@@ -285,6 +287,9 @@ class AuthController extends Controller
             'email' => $user->email ?? null,
             'phone' => $user->phone,
             'role' => $user->role,
+            'gender' => $user->gender,
+            'school_grade' => $user->school_grade ?? null,
+            'grade' => $user->school_grade ?? $user->grade ?? $user->grade_level ?? $user->academic_year ?? $user->stage ?? null,
             'avatar_url' => $avatarUrl,
             'avatar' => $avatarUrl,
             'profile_image' => $avatarUrl,

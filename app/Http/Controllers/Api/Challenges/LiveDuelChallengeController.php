@@ -35,6 +35,8 @@ class LiveDuelChallengeController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:180'],
             'subject' => ['required', 'string', 'max:120'],
+            'school_grade' => ['nullable', 'string'],
+            'term' => ['nullable', 'in:1,2'],
             'challenge_text' => ['nullable', 'string'],
             'badge_text' => ['nullable', 'string', 'max:80'],
             'file_url' => ['nullable', 'string', 'max:2048'],
@@ -51,6 +53,9 @@ class LiveDuelChallengeController extends Controller
             'questions.*.attachment_file' => ['nullable', 'file'],
             'status' => ['nullable', 'in:draft,published'],
         ]);
+
+        $validated['school_grade'] = $request->input('school_grade', $user->school_grade ?? null);
+        $validated['term'] = $request->input('term', $user->term ?? 1);
 
         foreach ($validated['questions'] as $index => $question) {
             $prompt = trim((string) ($question['prompt'] ?? ''));
@@ -76,6 +81,8 @@ class LiveDuelChallengeController extends Controller
             'user_id' => $user->id,
             'title' => $validated['title'],
             'subject' => $validated['subject'],
+            'school_grade' => $validated['school_grade'] ?? null,
+            'term' => (int) ($validated['term'] ?? 1),
             'challenge_text' => $validated['challenge_text'] ?? null,
             'file_url' => $validated['file_url'] ?? null,
             'badge_text' => $validated['badge_text'] ?? null,
@@ -87,7 +94,17 @@ class LiveDuelChallengeController extends Controller
         ]);
 
         try {
-            $recipients = User::whereHas('devices')->get();
+            $challengeGrade = (string) ($challenge->school_grade ?? '');
+            $recipients = User::where('role', 'user')
+                ->where('id', '!=', $challenge->user_id)
+                ->whereHas('devices')
+                ->when($challengeGrade !== '', function ($query) use ($challengeGrade) {
+                    $query->where(function ($gradeQuery) use ($challengeGrade) {
+                        $gradeQuery->where('school_grade', $challengeGrade)
+                            ->orWhere('school_grade', (int) $challengeGrade);
+                    });
+                })
+                ->get();
 
             foreach ($recipients as $recipient) {
                 try {

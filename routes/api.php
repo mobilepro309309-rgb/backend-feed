@@ -27,7 +27,6 @@ $apiRoutes = function (): void {
     Route::get('/security/device-response/status', [\App\Http\Controllers\Api\Security\PendingDeviceLoginController::class, 'status']);
     Route::get('/locations', [LocationController::class, 'index']);
 
-    Route::get('/feed', [FeedController::class, 'index']);
     Route::get('/users/{id}/latest-posts', [LatestQuestionsController::class, 'getUserLatestPosts']);
     Route::get('/users/{id}/latest-questions', [LatestQuestionsController::class, 'getUserQuestions']);
     Route::get('/profile/{id}/latest-posts', [LatestQuestionsController::class, 'getUserLatestPosts']);
@@ -55,6 +54,7 @@ $apiRoutes = function (): void {
         ->withoutMiddleware(['auth:sanctum', 'throttle']);
 
     Route::middleware('auth:sanctum')->group(function (): void {
+        Route::get('/feed', [FeedController::class, 'index']);
         Route::get('/chats/{chatId}/messages', [\App\Http\Controllers\ChatController::class, 'getMessages']);
         Route::get('/inbox', [\App\Http\Controllers\ChatController::class, 'getInbox']);
         Route::get('/chats', [\App\Http\Controllers\ChatController::class, 'index']);

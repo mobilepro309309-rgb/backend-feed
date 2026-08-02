@@ -30,6 +30,8 @@ class TrueFalseQuestion extends Model
         'user_id',
         'title',
         'subject',
+        'school_grade',
+        'term',
         'prompt',
         'file_url',
         'correct_answer',

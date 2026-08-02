@@ -251,6 +251,9 @@ class AdminRoleController extends Controller
             'phone' => $user->phone,
             'email' => $user->email,
             'role' => $user->role,
+            'gender' => $user->gender,
+            'school_grade' => $user->school_grade,
+            'grade' => $user->school_grade ?? $user->grade ?? $user->grade_level ?? $user->academic_year ?? $user->stage ?? null,
             'role_label' => $this->roleLabel($user->role),
         ];
     }

@@ -34,6 +34,8 @@ class CloudCapsuleChallengeController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:180'],
             'subject' => ['required', 'string', 'max:120'],
+            'school_grade' => ['nullable', 'string'],
+            'term' => ['nullable', 'in:1,2'],
             'intro_text' => ['nullable', 'string'],
             'file_url' => ['nullable', 'string', 'max:2048'],
             'badge_text' => ['nullable', 'string', 'max:120'],
@@ -45,10 +47,15 @@ class CloudCapsuleChallengeController extends Controller
             'status' => ['nullable', 'in:draft,published'],
         ]);
 
+        $validated['school_grade'] = $request->input('school_grade', $user->school_grade ?? null);
+        $validated['term'] = $request->input('term', $user->term ?? 1);
+
         $challenge = new CloudCapsuleChallenge();
         $challenge->user_id = $user->id;
         $challenge->title = $validated['title'];
         $challenge->subject = $validated['subject'];
+        $challenge->school_grade = $validated['school_grade'] ?? null;
+        $challenge->term = (int) ($validated['term'] ?? 1);
         $challenge->intro_text = $validated['intro_text'] ?? null;
         $challenge->file_url = $validated['file_url'] ?? null;
         $challenge->badge_text = $validated['badge_text'] ?? null;
@@ -62,7 +69,17 @@ class CloudCapsuleChallengeController extends Controller
         $challenge->save();
 
         try {
-            $recipients = User::whereHas('devices')->get();
+            $capsuleGrade = (string) ($challenge->school_grade ?? '');
+            $recipients = User::where('role', 'user')
+                ->where('id', '!=', $challenge->user_id)
+                ->whereHas('devices')
+                ->when($capsuleGrade !== '', function ($query) use ($capsuleGrade) {
+                    $query->where(function ($gradeQuery) use ($capsuleGrade) {
+                        $gradeQuery->where('school_grade', $capsuleGrade)
+                            ->orWhere('school_grade', (int) $capsuleGrade);
+                    });
+                })
+                ->get();
 
             foreach ($recipients as $recipient) {
                 try {

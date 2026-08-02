@@ -30,6 +30,8 @@ class FindTheBugChallenge extends Model
         'user_id',
         'title',
         'subject',
+        'school_grade',
+        'term',
         'prompt',
         'file_url',
         'options',
