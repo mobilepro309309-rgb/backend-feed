@@ -30,24 +30,23 @@ class FriendshipController extends Controller
         }
 
         if ($type === 'nearby') {
+            // Prefer explicit user_addresses row, but fall back to the Eloquent relation if missing.
             $currentUserAddress = DB::table('user_addresses')
                 ->where('user_id', auth()->id())
                 ->first();
 
-            if (! $currentUserAddress) {
-                return response()->json([
-                    'type' => 'nearby',
-                    'data' => collect(),
-                ], 200);
+            if (! $currentUserAddress && $user->address) {
+                $currentUserAddress = (object) $user->address->toArray();
             }
 
-            $schoolGrade = $user->school_grade;
-            if (! $schoolGrade) {
-                return response()->json([
-                    'type' => 'nearby',
-                    'data' => collect(),
-                ], 200);
+            // If user lacks an address record, try using the free-text `location` field as a fallback.
+            $useLocationFallback = false;
+            if (! $currentUserAddress && ! empty($user->location)) {
+                $useLocationFallback = true;
             }
+
+            // Allow searches even when `school_grade` is not set: omit grade filter in that case.
+            $schoolGrade = $user->school_grade;
 
             $friendships = Friendship::query()
                 ->where(function ($query) use ($user) {
@@ -85,13 +84,29 @@ class FriendshipController extends Controller
                 ->pluck('receiver_id')
                 ->all();
 
-            $nearbyUsers = User::with('address')
+            $nearbyQuery = User::with('address')
                 ->where('id', '!=', $user->id)
-                ->where('school_grade', $schoolGrade)
-                ->whereHas('address', function ($query) use ($currentUserAddress) {
+                ->when(! empty($schoolGrade), function ($q) use ($schoolGrade) {
+                    $q->where('school_grade', $schoolGrade);
+                });
+
+            if ($currentUserAddress) {
+                $nearbyQuery->whereHas('address', function ($query) use ($currentUserAddress) {
                     $query->where('governorate', $currentUserAddress->governorate)
                         ->where('city_or_center', $currentUserAddress->city_or_center);
-                })
+                });
+            } elseif ($useLocationFallback) {
+                // Fallback to matching the free-text `location` when no address record exists
+                $nearbyQuery->where('location', $user->location);
+            } else {
+                // If we couldn't determine user's location, return empty collection
+                return response()->json([
+                    'type' => 'nearby',
+                    'data' => collect(),
+                ], 200);
+            }
+
+            $nearbyUsers = $nearbyQuery
                 ->when(count($blockedIds) > 0, function ($query) use ($blockedIds) {
                     $query->whereNotIn('id', $blockedIds);
                 })

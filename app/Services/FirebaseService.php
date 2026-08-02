@@ -135,7 +135,7 @@ class FirebaseService
                 $androidConfig = AndroidConfig::fromArray([
                     'priority' => 'high',
                     'notification' => [
-                        'channel_id' => 'default',
+                        'channel_id' => $data['channelId'] ?? 'default',
                         'default_sound' => true,
                         'sound' => 'default',
                         'visibility' => 'PUBLIC',

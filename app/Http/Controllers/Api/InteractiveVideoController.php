@@ -10,6 +10,7 @@ use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 
 class InteractiveVideoController extends Controller
 {
@@ -19,7 +20,25 @@ class InteractiveVideoController extends Controller
 
     public function index(Request $request)
     {
-        $videos = InteractiveVideo::with(['user', 'videoQuestions'])
+        $videos = InteractiveVideo::with([
+            'user',
+            'videoQuestions' => function ($query) {
+                $query->select([
+                    'id',
+                    'interactive_video_id',
+                    'question_text',
+                    'choice_1',
+                    'choice_2',
+                    'choice_3',
+                    'choice_4',
+                    'correct_choice',
+                    'stop_minute',
+                    'stop_second',
+                    'file_url',
+                    'explanation',
+                ]);
+            },
+        ])
             ->latest('created_at')
             ->get();
 
@@ -28,13 +47,13 @@ class InteractiveVideoController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'title' => ['required', 'string', 'max:255'],
             'youtube_url' => ['required', 'string', 'url', 'max:2048'],
             'subject' => ['nullable', 'string', 'max:120'],
             'number_of_questions' => ['required', 'integer', 'min:0'],
             'questions' => ['required', 'array', 'min:1'],
-            'questions.*.question_text' => ['required', 'string'],
+            'questions.*.question_text' => ['nullable', 'string'],
             'questions.*.choice_1' => ['required', 'string'],
             'questions.*.choice_2' => ['required', 'string'],
             'questions.*.choice_3' => ['required', 'string'],
@@ -42,7 +61,22 @@ class InteractiveVideoController extends Controller
             'questions.*.correct_choice' => ['required', 'integer', 'in:1,2,3,4'],
             'questions.*.stop_minute' => ['required', 'integer', 'min:0'],
             'questions.*.stop_second' => ['required', 'integer', 'min:0', 'max:59'],
+            'questions.*.file_url' => ['nullable', 'string', 'max:2048'],
+            'questions.*.explanation' => ['nullable', 'string'],
         ]);
+
+        $validator->after(function ($validator) use ($request) {
+            $questions = $request->input('questions', []);
+            foreach ($questions as $index => $question) {
+                $questionText = trim((string) ($question['question_text'] ?? ''));
+                $fileUrl = trim((string) ($question['file_url'] ?? ''));
+                if ($questionText === '' && $fileUrl === '') {
+                    $validator->errors()->add("questions.$index.question_text", 'يجب توفير نص السؤال أو ملف مرفق لكل سؤال.');
+                }
+            }
+        });
+
+        $validated = $validator->validate();
 
         DB::beginTransaction();
 
@@ -56,8 +90,10 @@ class InteractiveVideoController extends Controller
             ]);
 
             foreach ($validated['questions'] as $questionData) {
+                $questionText = trim((string) ($questionData['question_text'] ?? ''));
+
                 $video->videoQuestions()->create([
-                    'question_text' => $questionData['question_text'],
+                    'question_text' => $questionText,
                     'choice_1' => $questionData['choice_1'],
                     'choice_2' => $questionData['choice_2'],
                     'choice_3' => $questionData['choice_3'],
@@ -65,6 +101,7 @@ class InteractiveVideoController extends Controller
                     'correct_choice' => $questionData['correct_choice'],
                     'stop_minute' => $questionData['stop_minute'],
                     'stop_second' => $questionData['stop_second'],
+                    'file_url' => $questionData['file_url'] ?? null,
                 ]);
             }
 

@@ -113,14 +113,18 @@ $deviceToken = $validated['fcm_token'];
             ], 401);
         }
 
-        $limit = (int) $request->query('limit', 0);
+        $page = max(1, (int) $request->query('page', 1));
+        $limit = max(0, (int) $request->query('limit', 0));
+
+        $baseQuery = NotificationUser::where('user_id', $user->id);
+        $totalNotifications = $baseQuery->count();
 
         $query = NotificationUser::where('user_id', $user->id)
             ->with(['notification'])
             ->orderByDesc('created_at');
 
         if ($limit > 0) {
-            $query->limit($limit);
+            $query->offset(($page - 1) * $limit)->limit($limit);
         }
 
         $items = $query->get()
@@ -185,6 +189,13 @@ $deviceToken = $validated['fcm_token'];
         return response()->json([
             'success' => true,
             'data' => $items,
+            'meta' => [
+                'page' => $page,
+                'limit' => $limit,
+                'total' => $totalNotifications,
+                'count' => $items->count(),
+                'hasMore' => $limit > 0 ? ($page * $limit < $totalNotifications) : false,
+            ],
         ]);
     }
 

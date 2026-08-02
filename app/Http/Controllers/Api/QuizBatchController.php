@@ -57,12 +57,12 @@ class QuizBatchController extends Controller
         $normalizedType = strtolower($type);
 
         $response = match ($normalizedType) {
-            'daily_challenge', 'dailychallenge', 'dailychallengequiz' => (new DailyChallengeController())->show($id),
-            'find_the_bug', 'findthebug', 'findthebugquiz' => (new FindTheBugChallengeController())->show($id),
-            'multiple_choice', 'multiplechoice', 'multiplechoicequiz', 'choice', 'mcq' => (new MultipleChoiceQuestionController())->show($id),
-            'true_false', 'truefalse', 'truefalsequiz' => (new TrueFalseQuestionController())->show($id),
-            'comparison_card', 'comparison', 'comparisoncard', 'comparisoncardquiz' => (new ComparisonChallengeController())->show($id),
-            'cheat_sheet', 'cheatsheet', 'cheat_sheet_flip', 'cheatsheetflipcardquiz' => (new CheatSheetController())->show($id),
+            'daily_challenge', 'dailychallenge', 'dailychallengequiz' => app(DailyChallengeController::class)->show($id),
+            'find_the_bug', 'findthebug', 'findthebugquiz' => app(FindTheBugChallengeController::class)->show($id),
+            'multiple_choice', 'multiplechoice', 'multiplechoicequiz', 'choice', 'mcq' => app(MultipleChoiceQuestionController::class)->show($id),
+            'true_false', 'truefalse', 'truefalsequiz' => app(TrueFalseQuestionController::class)->show($id),
+            'comparison_card', 'comparison', 'comparisoncard', 'comparisoncardquiz' => app(ComparisonChallengeController::class)->show($id),
+            'cheat_sheet', 'cheatsheet', 'cheat_sheet_flip', 'cheatsheetflipcardquiz' => app(CheatSheetController::class)->show($id),
             default => null,
         };
 

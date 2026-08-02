@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Cache, DB, Log, Validator};
+use Illuminate\Support\Str;
 
 use App\Events\{MessageSent, MessageStatusUpdated, MessagesRead, UserTyping};
-use App\Models\{Chat, ChatParticipant, Message};
+use App\Models\{Chat, ChatParticipant, Message, User};
+use App\Services\NotificationService;
 
 class ChatController extends Controller
 {
@@ -350,6 +352,23 @@ class ChatController extends Controller
                 }
             }
 
+            try {
+                $this->dispatchChatPushNotification(
+                    $receiverId,
+                    $senderId,
+                    $chatId,
+                    $resolvedMessageType,
+                    $resolvedMessageText
+                );
+            } catch (\Throwable $notificationException) {
+                Log::error('Chat push dispatch failed', [
+                    'sender_id' => $senderId,
+                    'receiver_id' => $receiverId,
+                    'chat_id' => $chatId,
+                    'error' => $notificationException->getMessage(),
+                ]);
+            }
+
             broadcast(new MessageSent($message))->toOthers();
 
             return response()->json([
@@ -446,6 +465,16 @@ class ChatController extends Controller
             'file_type' => $validated['file_type'] ?? null,
             'file_name' => $validated['file_name'] ?? null,
             'file_size' => $validated['file_size'] ?? null,
+        ]);
+
+        // Log detailed info for shared message creation (helpful for debugging quiz share payloads)
+        Log::info('createSharedMessage.created', [
+            'message_id' => $message->id,
+            'chat_id' => $chatId,
+            'sender_id' => $senderId,
+            'resolved_message_type' => $resolvedMessageType,
+            'resolved_message_text' => $resolvedMessageText,
+            'request' => $request->all(),
         ]);
 
         broadcast(new MessageSent($message))->toOthers();
@@ -567,11 +596,85 @@ class ChatController extends Controller
         return 'text';
     }
 
-    public function getMessages($chatId)
+    protected function resolveChatNotificationBody(string $resolvedMessageType, ?string $messageText): string
+    {
+        $normalizedType = mb_strtolower(trim((string) $resolvedMessageType));
+        $text = trim((string) $messageText);
+
+        if ($normalizedType === 'text') {
+            return Str::limit($text ?: 'لديك رسالة جديدة', 100, '...');
+        }
+
+        if (in_array($normalizedType, ['image', 'photo', 'picture'], true)) {
+            return '📷 أرسل لك صورة';
+        }
+
+        if ($normalizedType === 'audio') {
+            return '🎤 أرسل لك رسالة صوتية';
+        }
+
+        if (in_array($normalizedType, ['document', 'file', 'media', 'attachment'], true)) {
+            return '📁 أرسل لك ملفاً';
+        }
+
+        if (in_array($normalizedType, ['post', 'multiplechoicequiz', 'truefalsequiz', 'findthebugquiz', 'dailychallengequiz', 'comparisoncardquiz', 'liveduelcardquiz', 'question', 'quiz', 'challenge'], true)) {
+            return '❓ أرسل لك سؤالاً/تحدياً';
+        }
+
+        return Str::limit($text ?: 'لديك رسالة جديدة', 100, '...');
+    }
+
+    protected function dispatchChatPushNotification(int $recipientId, int $senderId, int $chatId, string $resolvedMessageType, string $resolvedMessageText): void
+    {
+        if ($recipientId <= 0 || $recipientId === $senderId) {
+            return;
+        }
+
+        $recipient = User::find($recipientId);
+        if (! $recipient) {
+            return;
+        }
+
+        $sender = auth()->user();
+        $title = trim((string) optional($sender)->name) ?: 'رسالة جديدة';
+        $body = $this->resolveChatNotificationBody($resolvedMessageType, $resolvedMessageText);
+
+        $payload = [
+            'title' => $title,
+            'body' => $body,
+            'data' => [
+                'type' => 'private_chat',
+                'target_type' => 'chat',
+                'action_type' => 'chat',
+                'chat_id' => (string) $chatId,
+                'sender_id' => (string) $senderId,
+                'sender_name' => (string) optional($sender)->name,
+                'channelId' => 'chat_messages',
+            ],
+        ];
+
+        try {
+            app(NotificationService::class)->sendNotificationToUser($recipientId, $payload);
+        } catch (\Throwable $e) {
+            Log::error('Chat Push Notification Failed', [
+                'recipient_id' => $recipientId,
+                'sender_id' => $senderId,
+                'chat_id' => $chatId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function getMessages(Request $request, $chatId)
     {
         \Log::emergency('API HIT: Request received for ChatID: ' . $chatId);
 
-        $messages = \App\Models\Message::where('chat_id', $chatId)
+        $limit = max(1, min(100, (int) $request->input('limit', 5)));
+        $beforeId = $request->input('before_id');
+        $page = max(1, (int) $request->input('page', 1));
+        $offset = $request->input('offset');
+
+        $query = \App\Models\Message::where('chat_id', $chatId)
             ->with(['replyTo' => function ($query) {
                 $query->select([
                     'id',
@@ -584,13 +687,64 @@ class ChatController extends Controller
                     'file_name',
                     'file_size',
                 ]);
-            }])
-            ->orderBy('created_at', 'asc')
-            ->get();
+            }]);
 
-        \Log::emergency('API RESULT: Prepared response for ChatID: ' . $chatId);
+        if ($beforeId !== null) {
+            $query->where('id', '<', (int) $beforeId);
+        } elseif ($page > 1) {
+            $query->skip(($page - 1) * $limit);
+        } elseif (is_numeric($offset)) {
+            $query->skip((int) $offset);
+        }
 
-        return response()->json(['messages' => $messages], 200);
+        $messages = $query
+            ->orderBy('created_at', 'desc')
+            ->orderByDesc('id')
+            ->take($limit)
+            ->get()
+            ->reverse()
+            ->values();
+
+            // Attempt to enrich messages that reference shared quiz content by resolving payloads
+            $enriched = $messages->map(function ($message) {
+                $m = $message->toArray();
+
+                $msgType = strtolower((string) ($message->message_type ?? ''));
+                $sharedId = $message->text ?? null; // resolveMessageText stored shared_content_id in text for shared messages
+
+                if ($sharedId && preg_match('/^\d+$/', (string) $sharedId)) {
+                    $id = (string) $sharedId;
+
+                    try {
+                        if (str_contains($msgType, 'multiple') || str_contains($msgType, 'mcq')) {
+                            $controller = app(\App\Http\Controllers\Api\Questions\MultipleChoiceQuestionController::class);
+                            $res = $controller->show($id);
+                        } elseif (str_contains($msgType, 'true')) {
+                            $controller = app(\App\Http\Controllers\Api\Questions\TrueFalseQuestionController::class);
+                            $res = $controller->show($id);
+                        } else {
+                            $res = null;
+                        }
+
+                        if ($res && method_exists($res, 'getData')) {
+                            $payload = $res->getData(true);
+                            if (is_array($payload) && isset($payload['data']) && is_array($payload['data'])) {
+                                $m['shared_payload'] = $payload['data'];
+                            } else {
+                                $m['shared_payload'] = is_array($payload) ? $payload : $payload;
+                            }
+                        }
+                    } catch (\Throwable $e) {
+                        // ignore resolution errors
+                    }
+                }
+
+                return $m;
+            });
+
+            \Log::emergency('API RESULT: Prepared response for ChatID: ' . $chatId);
+
+            return response()->json(['messages' => $enriched], 200);
     }
 
     public function markAsDelivered(Request $request, $chatId)

@@ -14,6 +14,24 @@ class NotificationService
     {
     }
 
+    public function sendNotificationToUser(int $userId, array $payload = []): array
+    {
+        $user = User::find($userId);
+        if (! $user) {
+            return [
+                'success' => false,
+                'error' => 'user_not_found',
+                'user_id' => $userId,
+            ];
+        }
+
+        $title = trim((string) ($payload['title'] ?? 'رسالة جديدة'));
+        $body = trim((string) ($payload['body'] ?? 'لديك رسالة جديدة'));
+        $data = is_array($payload['data'] ?? []) ? $payload['data'] : [];
+
+        return $this->sendNotification($user, $title, $body, $data);
+    }
+
     public function registerToken(User $user, string $token, ?string $deviceType = null): UserDevice
     {
         return UserDevice::updateOrCreate(
