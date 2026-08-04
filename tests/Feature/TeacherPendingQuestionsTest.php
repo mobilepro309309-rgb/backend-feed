@@ -64,6 +64,88 @@ class TeacherPendingQuestionsTest extends TestCase
         ]);
     }
 
+    public function test_teacher_endpoint_returns_latest_message_details_and_orders_by_latest_activity(): void
+    {
+        $teacher = User::factory()->create([
+            'role' => 'reply_questions_admin',
+            'name' => 'Teacher Two',
+            'school_grade' => '3',
+        ]);
+
+        $studentOne = User::factory()->create([
+            'role' => 'user',
+            'name' => 'Student One',
+            'school_grade' => '3',
+        ]);
+
+        $studentTwo = User::factory()->create([
+            'role' => 'user',
+            'name' => 'Student Two',
+            'school_grade' => '3',
+        ]);
+
+        $olderChat = Chat::create([
+            'type' => 'private',
+            'teacher_id' => $teacher->id,
+        ]);
+
+        $newerChat = Chat::create([
+            'type' => 'private',
+            'teacher_id' => $teacher->id,
+        ]);
+
+        ChatParticipant::insert([
+            ['chat_id' => $olderChat->id, 'user_id' => $teacher->id, 'created_at' => now(), 'updated_at' => now()],
+            ['chat_id' => $olderChat->id, 'user_id' => $studentOne->id, 'created_at' => now(), 'updated_at' => now()],
+            ['chat_id' => $newerChat->id, 'user_id' => $teacher->id, 'created_at' => now(), 'updated_at' => now()],
+            ['chat_id' => $newerChat->id, 'user_id' => $studentTwo->id, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        Friendship::create([
+            'sender_id' => $studentOne->id,
+            'receiver_id' => $teacher->id,
+            'status' => 'accepted',
+            'chat_id' => $olderChat->id,
+            'teacher' => 1,
+        ]);
+
+        Friendship::create([
+            'sender_id' => $studentTwo->id,
+            'receiver_id' => $teacher->id,
+            'status' => 'accepted',
+            'chat_id' => $newerChat->id,
+            'teacher' => 1,
+        ]);
+
+        Message::create([
+            'chat_id' => $olderChat->id,
+            'sender_id' => $studentOne->id,
+            'text' => 'رسالة قديمة',
+            'message_type' => 'text',
+            'status' => 'sent',
+            'created_at' => now()->subHour(),
+            'updated_at' => now()->subHour(),
+        ]);
+
+        Message::create([
+            'chat_id' => $newerChat->id,
+            'sender_id' => $studentTwo->id,
+            'text' => 'رسالة جديدة',
+            'message_type' => 'text',
+            'status' => 'sent',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->actingAs($teacher, 'sanctum')->getJson('/api/teacher/pending-questions');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.student_id', $studentTwo->id);
+        $response->assertJsonPath('data.0.last_message', 'رسالة جديدة');
+        $response->assertJsonPath('data.0.has_messaged', true);
+        $response->assertJsonPath('data.0.last_message_at', $response->json('data.0.last_message_at'));
+    }
+
     public function test_teacher_endpoint_returns_friendship_record_with_chat_id_for_student_interactions(): void
     {
         $teacher = User::factory()->create([

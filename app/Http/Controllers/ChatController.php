@@ -287,7 +287,6 @@ class ChatController extends Controller
                     ->orWhere('receiver_id', $teacherId);
             })
             ->where('teacher', 1)
-            ->orderByDesc('updated_at')
             ->get();
 
         $result = [];
@@ -307,6 +306,9 @@ class ChatController extends Controller
                 ->orderByDesc('id')
                 ->first();
 
+            $latestMessageTimestamp = $latestMessage?->created_at ?? $friendship->updated_at ?? $friendship->created_at;
+            $hasMessaged = (bool) $latestMessage;
+
             $result[] = [
                 'chat_id' => (int) $chatId,
                 'teacher_id' => $teacherId,
@@ -325,12 +327,23 @@ class ChatController extends Controller
                 ],
                 'last_message' => $latestMessage?->text ?? 'سؤال/بطاقة تفاعلية',
                 'message_type' => $latestMessage?->message_type ?? 'text',
+                'has_messaged' => $hasMessaged,
+                'last_message_at' => $latestMessage?->created_at?->toISOString() ?? null,
+                'last_message_time' => $latestMessage?->created_at?->toIso8601String() ?? null,
                 'sent_by_student' => $latestMessage ? (int) $latestMessage->sender_id !== $teacherId : true,
                 'needs_teacher_reply' => $latestMessage ? (int) $latestMessage->sender_id !== $teacherId : true,
                 'created_at' => $latestMessage?->created_at,
                 'updated_at' => $latestMessage?->updated_at,
+                '_latest_activity_at' => $latestMessageTimestamp,
             ];
         }
+
+        $result = collect($result)
+            ->sortByDesc(function ($item) {
+                return $item['_latest_activity_at'] ?? null;
+            })
+            ->values()
+            ->all();
 
         return response()->json([
             'success' => true,
