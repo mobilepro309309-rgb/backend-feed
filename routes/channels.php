@@ -18,9 +18,19 @@ Broadcast::channel('chat.{chatId}', function ($user, $chatId) {
         return false;
     }
 
-    return \App\Models\ChatParticipant::where('chat_id', $chatId)
+    // Allow access when the user is a chat participant OR when the user is the assigned teacher for the chat.
+    $isParticipant = \App\Models\ChatParticipant::where('chat_id', $chatId)
         ->where('user_id', $user->id)
         ->exists();
+
+    if ($isParticipant) return true;
+
+    // Also allow access when the chat's teacher_id matches the user id (teacher-driven chats)
+    $isTeacherForChat = \App\Models\Chat::where('id', $chatId)
+        ->where('teacher_id', $user->id)
+        ->exists();
+
+    return $isTeacherForChat;
 });
 
 Broadcast::channel('private-chat.{chatId}', function ($user, $chatId) {
@@ -28,9 +38,18 @@ Broadcast::channel('private-chat.{chatId}', function ($user, $chatId) {
         return false;
     }
 
-    return \App\Models\ChatParticipant::where('chat_id', $chatId)
+    // Mirror the same authorization as the public chat channel: participants or the chat's teacher
+    $isParticipant = \App\Models\ChatParticipant::where('chat_id', $chatId)
         ->where('user_id', $user->id)
         ->exists();
+
+    if ($isParticipant) return true;
+
+    $isTeacherForChat = \App\Models\Chat::where('id', $chatId)
+        ->where('teacher_id', $user->id)
+        ->exists();
+
+    return $isTeacherForChat;
 });
 
 Broadcast::channel('private-quiz-comments.{quizId}', function ($user) {

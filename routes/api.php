@@ -64,6 +64,7 @@ $apiRoutes = function (): void {
         Route::post('/chats/{chatId}/ensure-participant', [\App\Http\Controllers\ChatController::class, 'ensureParticipant']);
         Route::post('/chat/send', [\App\Http\Controllers\ChatController::class, 'sendMessage']);
         Route::post('/messages', [\App\Http\Controllers\ChatController::class, 'sendMessage']);
+        Route::post('/chat/get-or-create-private', [\App\Http\Controllers\ChatController::class, 'getOrCreatePrivateChat']);
         Route::post('/messages/initial-share', [\App\Http\Controllers\ChatController::class, 'createSharedMessage']);
         Route::post('/chats/{chatId}/delivered', [\App\Http\Controllers\ChatController::class, 'markAsDelivered']);
         Route::post('/messages/mark-as-read', [\App\Http\Controllers\ChatController::class, 'markAsRead']);
@@ -101,12 +102,18 @@ $apiRoutes = function (): void {
         // User Selection Endpoints (teachers and classmates)
         Route::get('/users/teachers', [UserSelectionController::class, 'getTeachers']);
         Route::get('/users/classmates', [UserSelectionController::class, 'getClassmates']);
+        Route::get('/teachers/available-for-post', [UserSelectionController::class, 'getAvailableTeachersForPost']);
+        Route::get('/teachers/scope-filtered', [UserSelectionController::class, 'getScopeFilteredTeachers']);
 
         Route::get('/admin-roles', [AdminRoleController::class, 'index']);
         Route::get('/admin-roles/options', [AdminRoleController::class, 'options']);
         Route::post('/admin-roles', [AdminRoleController::class, 'store']);
         Route::put('/admin-roles/{user}', [AdminRoleController::class, 'update']);
         Route::delete('/admin-roles/{user}', [AdminRoleController::class, 'destroy']);
+
+        Route::get('/teacher/my-scopes', [TeacherManagementController::class, 'myScopes']);
+        Route::get('/teacher/my-questions-by-category', [TeacherManagementController::class, 'getMyQuestionsByCategory']);
+        Route::get('/teacher/pending-questions', [\App\Http\Controllers\ChatController::class, 'getPendingQuestions']);
 
         Route::prefix('admin/teachers')->group(function () {
             Route::get('/', [TeacherManagementController::class, 'index']);

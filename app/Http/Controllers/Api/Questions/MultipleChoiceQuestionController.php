@@ -92,7 +92,11 @@ class MultipleChoiceQuestionController extends Controller
             ], 401);
         }
 
-        if (! in_array($user->role, ['main-admin', 'question_post_admin'], true)) {
+        $subject = trim((string) $request->input('subject', ''));
+        $schoolGrade = trim((string) $request->input('school_grade', $user->school_grade ?? ''));
+
+        if (! in_array($user->role, ['main-admin', 'question_post_admin'], true)
+            && ! $user->hasScope($schoolGrade, $subject, 'can_create_questions')) {
             return response()->json([
                 'message' => 'ليس لديك صلاحية لحفظ هذا السؤال',
             ], 403);

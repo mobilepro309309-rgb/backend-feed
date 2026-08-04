@@ -14,6 +14,7 @@ class Friendship extends Model
         'receiver_id',
         'status',
         'chat_id',
+        'teacher',
     ];
 
     public function sender()

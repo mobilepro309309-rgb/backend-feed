@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\{Cache, DB, Log, Validator};
 use Illuminate\Support\Str;
 
 use App\Events\{MessageSent, MessageStatusUpdated, MessagesRead, UserTyping};
-use App\Models\{Chat, ChatParticipant, Message, User};
+use App\Models\{Chat, ChatParticipant, Friendship, Message, User};
 use App\Services\NotificationService;
 
 class ChatController extends Controller
@@ -69,14 +69,38 @@ class ChatController extends Controller
             ->where('teacher_id', $receiverId)
             ->first();
 
+        $ensureFriendshipForChat = function (int $chatId) use ($senderId, $receiverId): void {
+            $friendshipExists = Friendship::query()
+                ->where(function ($query) use ($senderId, $receiverId): void {
+                    $query->where('sender_id', $senderId)
+                        ->where('receiver_id', $receiverId);
+                })
+                ->orWhere(function ($query) use ($senderId, $receiverId): void {
+                    $query->where('sender_id', $receiverId)
+                        ->where('receiver_id', $senderId);
+                })
+                ->exists();
+
+            if (! $friendshipExists) {
+                Friendship::create([
+                    'chat_id' => $chatId,
+                    'sender_id' => $senderId,
+                    'receiver_id' => $receiverId,
+                    'status' => 'accepted',
+                ]);
+            }
+        };
+
         if ($existingChat) {
+            $ensureFriendshipForChat((int) $existingChat->id);
+
             return response()->json([
                 'chat_id' => (int) $existingChat->id,
                 'created' => false,
             ], 200);
         }
 
-        return DB::transaction(function () use ($receiverId, $senderId) {
+        return DB::transaction(function () use ($receiverId, $senderId, $ensureFriendshipForChat) {
             $chat = Chat::create([
                 'type' => 'private',
                 'teacher_id' => $receiverId,
@@ -91,6 +115,8 @@ class ChatController extends Controller
                     ['created_at' => now(), 'updated_at' => now()]
                 );
             }
+
+            $ensureFriendshipForChat((int) $chat->id);
 
             return response()->json([
                 'chat_id' => (int) $chat->id,
@@ -124,6 +150,72 @@ class ChatController extends Controller
             ]);
 
             return $chat;
+        });
+    }
+
+    public function getOrCreatePrivateChat(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthorized.'], 401);
+        }
+
+        $validated = $request->validate([
+            'recipient_id' => ['required', 'integer', 'exists:users,id', 'not_in:' . $user->id],
+        ]);
+
+        $recipientId = (int) $validated['recipient_id'];
+
+        $friendship = Friendship::query()
+            ->where(function ($query) use ($user, $recipientId) {
+                $query->where('sender_id', $user->id)
+                    ->where('receiver_id', $recipientId);
+            })
+            ->orWhere(function ($query) use ($user, $recipientId) {
+                $query->where('sender_id', $recipientId)
+                    ->where('receiver_id', $user->id);
+            })
+            ->first();
+
+        if ($friendship && ! empty($friendship->chat_id)) {
+            $chat = Chat::find($friendship->chat_id);
+            if ($chat) {
+                $recipient = User::find($recipientId, ['id', 'name', 'email', 'school_grade']);
+
+                return response()->json([
+                    'status' => 'success',
+                    'chat_id' => (int) $friendship->chat_id,
+                    'recipient' => $recipient,
+                ], 200);
+            }
+        }
+
+        return DB::transaction(function () use ($user, $recipientId, $friendship) {
+            $chat = Chat::create(['type' => 'private']);
+
+            if ($friendship) {
+                $friendship->forceFill(['chat_id' => $chat->id])->save();
+            } else {
+                Friendship::create([
+                    'sender_id' => $user->id,
+                    'receiver_id' => $recipientId,
+                    'status' => 'accepted',
+                    'chat_id' => $chat->id,
+                ]);
+            }
+
+            ChatParticipant::insert([
+                ['chat_id' => $chat->id, 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()],
+                ['chat_id' => $chat->id, 'user_id' => $recipientId, 'created_at' => now(), 'updated_at' => now()],
+            ]);
+
+            $recipient = User::find($recipientId, ['id', 'name', 'email', 'school_grade']);
+
+            return response()->json([
+                'status' => 'created',
+                'chat_id' => (int) $chat->id,
+                'recipient' => $recipient,
+            ], 200);
         });
     }
 
@@ -176,6 +268,160 @@ class ChatController extends Controller
             'chat_id' => $chat ? (int) $chat->id : null,
             'found' => (bool) $chat,
         ], 200);
+    }
+
+    public function getPendingQuestions(Request $request)
+    {
+        $teacherId = (int) auth()->id();
+
+        if (! $teacherId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized',
+            ], 401);
+        }
+
+        $friendships = Friendship::query()
+            ->where(function ($query) use ($teacherId): void {
+                $query->where('sender_id', $teacherId)
+                    ->orWhere('receiver_id', $teacherId);
+            })
+            ->where('teacher', 1)
+            ->orderByDesc('updated_at')
+            ->get();
+
+        $result = [];
+
+        foreach ($friendships as $friendship) {
+            $studentId = (int) ($friendship->sender_id === $teacherId ? $friendship->receiver_id : $friendship->sender_id);
+            $chatId = $this->ensureFriendshipChat($friendship);
+            $student = User::find($studentId, ['id', 'name', 'school_grade', 'role']);
+
+            if (! $student) {
+                continue;
+            }
+
+            $latestMessage = Message::query()
+                ->where('chat_id', $chatId)
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->first();
+
+            $result[] = [
+                'chat_id' => (int) $chatId,
+                'teacher_id' => $teacherId,
+                'student_id' => (int) $student->id,
+                'student_name' => $student->name,
+                'school_grade' => $student->school_grade,
+                'student_role' => $student->role,
+                'student' => $student->only(['id', 'name', 'school_grade', 'role']),
+                'friendship' => [
+                    'id' => $friendship->id,
+                    'sender_id' => $friendship->sender_id,
+                    'receiver_id' => $friendship->receiver_id,
+                    'status' => $friendship->status,
+                    'teacher' => (int) ($friendship->teacher ?? 0),
+                    'chat_id' => (int) $chatId,
+                ],
+                'last_message' => $latestMessage?->text ?? 'سؤال/بطاقة تفاعلية',
+                'message_type' => $latestMessage?->message_type ?? 'text',
+                'sent_by_student' => $latestMessage ? (int) $latestMessage->sender_id !== $teacherId : true,
+                'needs_teacher_reply' => $latestMessage ? (int) $latestMessage->sender_id !== $teacherId : true,
+                'created_at' => $latestMessage?->created_at,
+                'updated_at' => $latestMessage?->updated_at,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $result,
+        ], 200);
+    }
+
+    private function ensureFriendshipChat(Friendship $friendship): int
+    {
+        if (! empty($friendship->chat_id)) {
+            return (int) $friendship->chat_id;
+        }
+
+        $senderId = (int) $friendship->sender_id;
+        $receiverId = (int) $friendship->receiver_id;
+
+        $existingChat = Chat::query()
+            ->where('type', 'private')
+            ->whereHas('participants', function ($query) use ($senderId): void {
+                $query->where('user_id', $senderId);
+            })
+            ->whereHas('participants', function ($query) use ($receiverId): void {
+                $query->where('user_id', $receiverId);
+            })
+            ->first();
+
+        if ($existingChat) {
+            $friendship->forceFill(['chat_id' => $existingChat->id])->save();
+
+            return (int) $existingChat->id;
+        }
+
+        $chat = $this->ensurePrivateChatForFriendshipPair($senderId, $receiverId);
+        $friendship->forceFill(['chat_id' => $chat->id])->save();
+
+        return (int) $chat->id;
+    }
+
+    protected function ensureFriendshipForChatInitiation(int $senderId, int $receiverId, int $chatId, Request $request): Friendship
+    {
+        $recipient = User::find($receiverId, ['id', 'role']);
+        $requestSignalsTeacher = false;
+
+        foreach (['teacher', 'is_teacher', 'target_type', 'sendTargetType', 'teacher_id'] as $field) {
+            $value = $request->input($field);
+
+            if (is_bool($value) && $value) {
+                $requestSignalsTeacher = true;
+                break;
+            }
+
+            if (is_numeric($value) && (int) $value === 1) {
+                $requestSignalsTeacher = true;
+                break;
+            }
+
+            if (is_string($value) && mb_strtolower(trim($value)) === 'teacher') {
+                $requestSignalsTeacher = true;
+                break;
+            }
+        }
+
+        $isTeacherRelated = $requestSignalsTeacher || ($recipient && mb_strtolower((string) ($recipient->role ?? '')) === 'teacher');
+
+        $friendship = Friendship::query()
+            ->where(function ($query) use ($senderId, $receiverId): void {
+                $query->where('sender_id', $senderId)
+                    ->where('receiver_id', $receiverId);
+            })
+            ->orWhere(function ($query) use ($senderId, $receiverId): void {
+                $query->where('sender_id', $receiverId)
+                    ->where('receiver_id', $senderId);
+            })
+            ->first();
+
+        if ($friendship) {
+            $friendship->forceFill([
+                'chat_id' => $chatId,
+                'teacher' => $isTeacherRelated ? 1 : ($friendship->teacher ?? 0),
+            ])->save();
+
+            return $friendship;
+        }
+
+        return Friendship::create([
+            'sender_id' => $senderId,
+            'receiver_id' => $receiverId,
+            'status' => 'accepted',
+            'chat_id' => $chatId,
+            'teacher' => $isTeacherRelated ? 1 : 0,
+        ]);
     }
 
     public function sendMessage(Request $request)
@@ -276,6 +522,8 @@ class ChatController extends Controller
                                 ['created_at' => now(), 'updated_at' => now()]
                             );
                         }
+
+                        $this->ensureFriendshipForChatInitiation($senderId, $receiverId, (int) $chat->id, $request);
 
                         $message = Message::create([
                             'chat_id' => $chat->id,
@@ -440,6 +688,8 @@ class ChatController extends Controller
                         ['created_at' => now(), 'updated_at' => now()]
                     );
                 }
+
+                $this->ensureFriendshipForChatInitiation($senderId, $receiverId, (int) $chat->id, $request);
                 $chatId = (int) $chat->id;
             }
         }
