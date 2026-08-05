@@ -32,7 +32,7 @@ class NearbyStudentsController extends Controller
         $radiusInKm = 2.0;
 
         $students = UserAddress::query()
-            ->with('user:id,name,phone')
+            ->with('user:id,name,phone,role,school_grade')
             ->whereHas('user', function ($query): void {
                 $query->where('role', 'user');
             })

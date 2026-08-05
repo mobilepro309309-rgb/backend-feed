@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\{DB, Log, Schema, Validator};
 
 use App\Http\Controllers\Controller;
 use App\Models\{Friendship, TeacherScope, User};
+use App\Models\Posts\Post;
 
 class UserSelectionController extends Controller
 {
@@ -48,7 +49,10 @@ class UserSelectionController extends Controller
         Log::info('[TeacherScopesDebug] Request raw post_id=' . $request->query('post_id', $request->input('post_id', '')));
 
         $validator = Validator::make($request->all(), [
-            'subject' => ['required', 'string', 'max:255'],
+            'subject' => ['nullable', 'string', 'max:255'],
+            'subject_id' => ['nullable', 'string', 'max:255'],
+            'school_grade' => ['nullable', 'string', 'max:255'],
+            'post_id' => ['nullable', 'numeric'],
         ]);
 
         if ($validator->fails()) {
@@ -70,18 +74,44 @@ class UserSelectionController extends Controller
         }
 
         $studentGrade = trim((string) ($student->school_grade ?? $student->grade ?? $student->grade_level ?? ''));
-        $postSubject = trim((string) $request->query('subject', $request->input('subject', '')));
-        $numericGrade = $this->normalizeSchoolGradeToNumber($studentGrade);
+        $requestSubject = trim((string) $request->query('subject', $request->input('subject', '')));
+        $requestSubjectId = trim((string) $request->query('subject_id', $request->input('subject_id', '')));
+        $requestSchoolGrade = trim((string) $request->query('school_grade', $request->input('school_grade', '')));
+        $requestPostId = $request->query('post_id', $request->input('post_id', null));
+
+        $resolvedSubject = $requestSubject ?: $requestSubjectId;
+        $resolvedSchoolGrade = $requestSchoolGrade ?: $studentGrade;
+        $resolvedPostSubject = $resolvedSubject;
+        $resolvedPostSchoolGrade = $resolvedSchoolGrade;
+
+        if (($resolvedSubject === '' || $resolvedSchoolGrade === '') && $requestPostId) {
+            $post = Post::find($requestPostId);
+            if ($post) {
+                if ($resolvedSubject === '') {
+                    $resolvedPostSubject = trim((string) $post->subject);
+                }
+                if ($resolvedSchoolGrade === '') {
+                    $resolvedPostSchoolGrade = trim((string) ($post->school_grade ?? ''));
+                }
+            }
+        }
+
+        $numericGrade = $this->normalizeSchoolGradeToNumber($resolvedPostSchoolGrade);
         $numericGradeForQuery = $numericGrade !== null ? (string) $numericGrade : null;
-        $normalizedSubject = trim(strtolower($postSubject));
+        $normalizedSubject = trim(strtolower($resolvedPostSubject));
 
         Log::info('[TeacherScopesDebug] Parsed student grade=' . $studentGrade);
-        Log::info('[TeacherScopesDebug] Parsed post subject=' . $postSubject);
+        Log::info('[TeacherScopesDebug] Request subject=' . $requestSubject);
+        Log::info('[TeacherScopesDebug] Request subject_id=' . $requestSubjectId);
+        Log::info('[TeacherScopesDebug] Request school_grade=' . $requestSchoolGrade);
+        Log::info('[TeacherScopesDebug] Request post_id=' . $requestPostId);
+        Log::info('[TeacherScopesDebug] Resolved subject=' . $resolvedPostSubject);
+        Log::info('[TeacherScopesDebug] Resolved school_grade=' . $resolvedPostSchoolGrade);
         Log::info('[TeacherScopesDebug] Normalized subject for comparison=' . $normalizedSubject);
         Log::info('[TeacherScopesDebug] Mapped numeric grade=' . ($numericGradeForQuery ?? 'NULL'));
 
-        if ($studentGrade === '' || $postSubject === '' || $numericGradeForQuery === null) {
-            Log::warning('⚠️ [EMPTY FILTERS]: Student grade or post subject is empty.');
+        if ($resolvedPostSubject === '' || $numericGradeForQuery === null) {
+            Log::warning('⚠️ [EMPTY FILTERS]: Resolved grade or subject is empty.');
             return response()->json([
                 'success' => true,
                 'data' => [],
@@ -91,9 +121,9 @@ class UserSelectionController extends Controller
 
         $teacherScopesQuery = TeacherScope::query()
             ->where('school_grade', $numericGradeForQuery)
-            ->where(function ($query) use ($normalizedSubject, $postSubject) {
+            ->where(function ($query) use ($normalizedSubject, $resolvedPostSubject) {
                 $query->whereRaw('LOWER(TRIM(subject)) = ?', [$normalizedSubject])
-                    ->orWhereRaw('LOWER(TRIM(subject)) = ?', [trim(strtolower(str_replace([' ', '_', '-', 'ـ'], '', $postSubject)))])
+                    ->orWhereRaw('LOWER(TRIM(subject)) = ?', [trim(strtolower(str_replace([' ', '_', '-', 'ـ'], '', $resolvedPostSubject)))])
                     ->orWhereRaw('LOWER(TRIM(subject)) LIKE ?', [$normalizedSubject . '%'])
                     ->orWhereRaw('LOWER(TRIM(subject)) LIKE ?', ['%' . $normalizedSubject]);
             })
@@ -155,7 +185,11 @@ class UserSelectionController extends Controller
 
         $debugInfo = [
             'raw_post_id' => $request->query('post_id', $request->input('post_id', null)),
-            'post_subject' => $postSubject,
+            'raw_subject' => $requestSubject,
+            'raw_subject_id' => $requestSubjectId,
+            'raw_school_grade' => $requestSchoolGrade,
+            'resolved_subject' => $resolvedPostSubject,
+            'resolved_school_grade' => $resolvedPostSchoolGrade,
             'auth_user_id' => $requestUser?->id ?? auth()->id(),
             'auth_user_role' => $requestUser?->role ?? 'unknown',
             'auth_school_grade' => $requestUser?->school_grade ?? null,
@@ -238,13 +272,65 @@ class UserSelectionController extends Controller
             ]);
         }
 
+        Log::info('[UserSelectionController][getClassmates] start', [
+            'current_user_id' => $currentUserId,
+            'request_user' => [
+                'id' => $currentUser?->id ?? null,
+                'role' => $currentUser?->role ?? null,
+            ],
+        ]);
+
         $friendships = Friendship::query()
             ->where('status', 'accepted')
+            ->where(function ($q) {
+                $q->where('teacher', '!=', 1)
+                    ->orWhereNull('teacher');
+            })
+            ->whereHas('sender', function ($q) {
+                $q->where('role', 'user');
+            })
+            ->whereHas('receiver', function ($q) {
+                $q->where('role', 'user');
+            })
             ->where(function ($query) use ($currentUserId) {
                 $query->where('sender_id', $currentUserId)
                     ->orWhere('receiver_id', $currentUserId);
             })
             ->get();
+
+        Log::info('[UserSelectionController][getClassmates] raw friendships before teacher filter', [
+            'current_user_id' => $currentUserId,
+            'count' => $friendships->count(),
+            'rows' => $friendships->map(function (Friendship $friendship) {
+                return [
+                    'id' => $friendship->id,
+                    'sender_id' => $friendship->sender_id,
+                    'receiver_id' => $friendship->receiver_id,
+                    'status' => $friendship->status,
+                    'teacher' => (int) ($friendship->teacher ?? 0),
+                ];
+            })->values()->all(),
+        ]);
+
+        $teacherFilteredFriendships = $friendships->filter(function (Friendship $friendship) {
+            return (int) ($friendship->teacher ?? 0) === 0;
+        })->values();
+
+        Log::info('[UserSelectionController][getClassmates] friendships after teacher filter', [
+            'current_user_id' => $currentUserId,
+            'count' => $teacherFilteredFriendships->count(),
+            'rows' => $teacherFilteredFriendships->map(function (Friendship $friendship) {
+                return [
+                    'id' => $friendship->id,
+                    'sender_id' => $friendship->sender_id,
+                    'receiver_id' => $friendship->receiver_id,
+                    'status' => $friendship->status,
+                    'teacher' => (int) ($friendship->teacher ?? 0),
+                ];
+            })->values()->all(),
+        ]);
+
+        $friendships = $teacherFilteredFriendships;
 
         $friendIds = $friendships
             ->map(function (Friendship $friendship) use ($currentUserId) {
@@ -266,8 +352,22 @@ class UserSelectionController extends Controller
                 'chat_id' => $friendship->chat_id ?? null,
                 'friendship_status' => 'accepted',
                 'status' => $friendship->status,
+                'teacher' => (int) ($friendship->teacher ?? 0),
             ]];
         });
+
+        Log::info('[UserSelectionController][classmates] friendship meta built', [
+            'current_user_id' => $currentUserId,
+            'friendship_meta' => $friendshipMeta->map(function ($meta, $friendId) {
+                return [
+                    'friend_id' => $friendId,
+                    'chat_id' => $meta['chat_id'] ?? null,
+                    'friendship_status' => $meta['friendship_status'] ?? null,
+                    'status' => $meta['status'] ?? null,
+                    'teacher' => (int) ($meta['teacher'] ?? 0),
+                ];
+            })->values()->all(),
+        ]);
 
         $classmateFields = $this->getSelectableUserFields();
 
@@ -304,8 +404,32 @@ class UserSelectionController extends Controller
                     'chatId' => $chatId,
                     'friendship_status' => $meta['friendship_status'] ?? 'accepted',
                     'status' => $meta['status'] ?? 'accepted',
+                    'teacher' => (int) ($meta['teacher'] ?? 0),
                 ]);
-            });
+            })
+            ->filter(function ($item) {
+                $role = strtolower((string) data_get($item, 'role', ''));
+                $teacherValue = (int) data_get($item, 'teacher', 0);
+
+                return $teacherValue === 0 && $role === 'user';
+            })
+            ->values();
+
+        $finalClassmateSample = $classmates->map(function ($item) {
+            return [
+                'id' => data_get($item, 'id'),
+                'name' => data_get($item, 'name'),
+                'role' => data_get($item, 'role'),
+                'teacher' => (int) data_get($item, 'teacher', 0),
+                'raw_teacher_value' => data_get($item, 'teacher'),
+            ];
+        })->values()->take(10)->all();
+
+        Log::info('[UserSelectionController][getClassmates] end', [
+            'current_user_id' => $currentUserId,
+            'count' => $classmates->count(),
+            'sample' => $finalClassmateSample,
+        ]);
 
         return response()->json([
             'success' => true,

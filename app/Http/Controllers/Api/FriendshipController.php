@@ -86,6 +86,7 @@ class FriendshipController extends Controller
 
             $nearbyQuery = User::with('address')
                 ->where('id', '!=', $user->id)
+                ->where('role', 'user')
                 ->when(! empty($schoolGrade), function ($q) use ($schoolGrade) {
                     $q->where('school_grade', $schoolGrade);
                 });
