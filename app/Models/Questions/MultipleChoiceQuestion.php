@@ -16,6 +16,8 @@ class MultipleChoiceQuestion extends Model
     use HasFactory;
     use SyncsToFeed;
 
+    protected $table = 'multiple_choice_questions';
+
     protected static function booted(): void
     {
         static::deleting(function (self $item): void {

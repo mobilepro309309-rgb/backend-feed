@@ -35,11 +35,13 @@ class InteractiveVideoTest extends TestCase
                         'stop_minute' => 0,
                         'stop_second' => 15,
                         'file_url' => 'https://cdn.example.com/question-attachment.pdf',
+                        'explanation' => 'هذا التفسير لاختبار الحفظ.',
                     ],
                 ],
             ]);
 
         $response->assertCreated();
+        $response->assertJsonFragment(['explanation' => 'هذا التفسير لاختبار الحفظ.']);
 
         $this->assertDatabaseHas('interactive_videos', [
             'title' => 'فيديو تفاعلي مع سؤال بدون نص',
@@ -50,6 +52,7 @@ class InteractiveVideoTest extends TestCase
 
         $this->assertDatabaseHas('video_questions', [
             'file_url' => 'https://cdn.example.com/question-attachment.pdf',
+            'explanation' => 'هذا التفسير لاختبار الحفظ.',
         ]);
     }
 }

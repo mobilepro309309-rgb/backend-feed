@@ -17,6 +17,8 @@ class ComparisonChallenge extends Model
     use HasFactory;
     use SyncsToFeed;
 
+    protected $table = 'comparison_challenges';
+
     protected static function booted(): void
     {
         static::deleting(function (self $item): void {

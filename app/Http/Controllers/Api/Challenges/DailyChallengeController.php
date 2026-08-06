@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Challenges;
 
+use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -15,8 +16,62 @@ use Illuminate\Support\Facades\Log;
 
 class DailyChallengeController extends Controller
 {
+    use FiltersQuestionListings;
+
     public function __construct(protected NotificationService $notificationService)
     {
+    }
+
+    public function index(Request $request)
+    {
+        $items = $this->applyQuestionListingFilters(
+            DailyChallenge::query()->with('user'),
+            $request
+        )->latest('created_at')->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $items->map(function (DailyChallenge $item): array {
+                $options = collect($item->options ?? [])->map(function ($opt): array {
+                    return ['label' => (string) $opt, 'value' => (string) $opt];
+                })->values()->all();
+
+                $correctIndex = $item->correct_answer_index ?? null;
+                $correctValue = null;
+                if (is_numeric($correctIndex) && isset($options[(int) $correctIndex])) {
+                    $correctValue = $options[(int) $correctIndex]['value'];
+                }
+
+                return [
+                    'id' => $item->id,
+                    'title' => $item->title,
+                    'subject' => $item->subject,
+                    'school_grade' => $item->school_grade,
+                    'status' => $item->status ?? 'draft',
+                    'badge_text' => $item->badge_text,
+                    'file_url' => $item->file_url ?? null,
+                    'prompt' => $item->prompt,
+                    'question' => $item->prompt,
+                    'description' => $item->prompt,
+                    'options' => $options,
+                    'choices' => $options,
+                    'correct_answer' => $correctValue,
+                    'correct_answer_index' => is_numeric($correctIndex) ? (int) $correctIndex : null,
+                    'correctIndex' => is_numeric($correctIndex) ? (int) $correctIndex : null,
+                    'correct_index' => is_numeric($correctIndex) ? (int) $correctIndex : null,
+                    'reward_text' => $item->reward_text,
+                    'quizType' => 'daily_challenge',
+                    'questionType' => 'daily_challenge',
+                    'type' => 'daily_challenge',
+                    'user' => [
+                        'id' => $item->user?->id,
+                        'name' => $item->user?->name,
+                    ],
+                    'created_at' => $item->created_at,
+                    'updated_at' => $item->updated_at,
+                ];
+            })->values(),
+        ]);
     }
 
     protected function resolveQuizId(string $input): ?int

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use App\Http\Controllers\Controller;
 use App\Models\TeacherScope;
 use App\Models\User;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 
 class TeacherManagementController extends Controller
 {
+    use FiltersQuestionListings;
     public function lookupUser($id)
     {
         $user = User::find($id);
@@ -134,11 +136,11 @@ class TeacherManagementController extends Controller
         $allowedTypes = [
             'true_false' => 'true_false_questions',
             'multiple_choice' => 'multiple_choice_questions',
-            'cloud_capsule' => 'cloud_capsule_questions',
-            'daily_challenge' => 'daily_challenge_questions',
-            'comparison' => 'comparison_questions',
-            'find_the_bug' => 'find_the_bug_questions',
-            'live_duel' => 'live_duel_questions',
+            'cloud_capsule' => 'cloud_capsule_challenges',
+            'daily_challenge' => 'daily_challenges',
+            'comparison' => 'comparison_challenges',
+            'find_the_bug' => 'find_the_bug_challenges',
+            'live_duel' => 'live_duel_challenges',
         ];
 
         Log::info('🔥🔥🔥 [BACKEND DEBUG START] 🔥🔥🔥');
@@ -161,14 +163,54 @@ class TeacherManagementController extends Controller
 
         $query = DB::table($table)->where('user_id', $user->id);
 
-        if ($request->filled('school_grade')) {
-            Log::info('📌 [FILTER school_grade]: ' . $request->query('school_grade'));
-            $query->where('school_grade', $request->query('school_grade'));
+        $resolvedSubject = $this->resolveListingSubject($request);
+        $resolvedGrade = $this->resolveListingSchoolGrade($request);
+        $subjectVariants = $this->buildSubjectVariants($resolvedSubject);
+        $gradeVariants = $this->buildSchoolGradeVariants($resolvedGrade);
+
+        Log::info('📌 [RESOLVED subject]: ' . ($resolvedSubject ?? 'NULL'));
+        Log::info('📌 [RESOLVED school_grade]: ' . ($resolvedGrade ?? 'NULL'));
+        Log::info('📌 [SUBJECT VARIANTS]: ' . json_encode($subjectVariants, JSON_UNESCAPED_UNICODE));
+        Log::info('📌 [GRADE VARIANTS]: ' . json_encode($gradeVariants, JSON_UNESCAPED_UNICODE));
+
+        if ($subjectVariants !== []) {
+            $query->where(function ($subjectQuery) use ($subjectVariants) {
+                foreach ($subjectVariants as $index => $variant) {
+                    $variant = trim((string) $variant);
+                    if ($variant === '') {
+                        continue;
+                    }
+
+                    $normalizedVariant = $this->normalizeComparableToken($variant);
+                    $subjectCondition = 'LOWER(TRIM(subject)) = ?';
+
+                    if ($index === 0) {
+                        $subjectQuery->whereRaw($subjectCondition, [$normalizedVariant]);
+                    } else {
+                        $subjectQuery->orWhereRaw($subjectCondition, [$normalizedVariant]);
+                    }
+                }
+            });
         }
 
-        if ($request->filled('subject')) {
-            Log::info('📌 [FILTER subject]: ' . $request->query('subject'));
-            $query->where('subject', $request->query('subject'));
+        if ($gradeVariants !== []) {
+            $query->where(function ($gradeQuery) use ($gradeVariants) {
+                foreach ($gradeVariants as $index => $variant) {
+                    $variant = trim((string) $variant);
+                    if ($variant === '') {
+                        continue;
+                    }
+
+                    $normalizedVariant = $this->normalizeComparableToken($variant);
+                    $gradeCondition = 'LOWER(TRIM(school_grade)) = ?';
+
+                    if ($index === 0) {
+                        $gradeQuery->whereRaw($gradeCondition, [$normalizedVariant]);
+                    } else {
+                        $gradeQuery->orWhereRaw($gradeCondition, [$normalizedVariant]);
+                    }
+                }
+            });
         }
 
         $items = $query->get();

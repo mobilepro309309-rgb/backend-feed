@@ -17,6 +17,8 @@ class FindTheBugChallenge extends Model
     use HasFactory;
     use SyncsToFeed;
 
+    protected $table = 'find_the_bug_challenges';
+
     protected static function booted(): void
     {
         static::deleting(function (self $item): void {

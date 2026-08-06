@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Questions;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use App\Models\Message;
 use App\Models\Questions\TrueFalseQuestion;
 use App\Models\User;
@@ -12,8 +13,47 @@ use Illuminate\Support\Facades\Log;
 
 class TrueFalseQuestionController extends Controller
 {
+    use FiltersQuestionListings;
+
     public function __construct(protected NotificationService $notificationService)
     {
+    }
+
+    public function index(Request $request)
+    {
+        $items = $this->applyQuestionListingFilters(
+            TrueFalseQuestion::query()->with('user'),
+            $request
+        )->latest('created_at')->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $items->map(function (TrueFalseQuestion $item): array {
+                return [
+                    'id' => $item->id,
+                    'title' => $item->title,
+                    'subject' => $item->subject,
+                    'school_grade' => $item->school_grade,
+                    'status' => $item->status ?? 'draft',
+                    'badge_text' => $item->badge_text,
+                    'file_url' => $item->file_url ?? null,
+                    'prompt' => $item->prompt,
+                    'question' => $item->prompt,
+                    'description' => $item->prompt,
+                    'correct_answer' => (bool) $item->correct_answer,
+                    'correctAnswer' => (bool) $item->correct_answer,
+                    'quizType' => 'true_false',
+                    'questionType' => 'true_false',
+                    'type' => 'true_false',
+                    'user' => [
+                        'id' => $item->user?->id,
+                        'name' => $item->user?->name,
+                    ],
+                    'created_at' => $item->created_at,
+                    'updated_at' => $item->updated_at,
+                ];
+            })->values(),
+        ]);
     }
 
     protected function resolveQuizId(string $input): ?int

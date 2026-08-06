@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Challenges;
 
+use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use App\Http\Controllers\Controller;
 use App\Models\Challenges\ComparisonChallenge;
 use App\Models\Message;
@@ -12,8 +13,52 @@ use Illuminate\Support\Facades\Log;
 
 class ComparisonChallengeController extends Controller
 {
+    use FiltersQuestionListings;
+
     public function __construct(protected NotificationService $notificationService)
     {
+    }
+
+    public function index(Request $request)
+    {
+        $items = $this->applyQuestionListingFilters(
+            ComparisonChallenge::query()->with('user'),
+            $request
+        )->latest('created_at')->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $items->map(function (ComparisonChallenge $item): array {
+                $prompt = trim(($item->left_text ?? '') . ' vs ' . ($item->right_text ?? ''));
+
+                return [
+                    'id' => $item->id,
+                    'title' => $item->title,
+                    'subject' => $item->subject,
+                    'school_grade' => $item->school_grade,
+                    'status' => $item->status ?? 'draft',
+                    'badge_text' => $item->badge_text,
+                    'file_url' => $item->file_url ?? null,
+                    'prompt' => $prompt,
+                    'question' => $prompt,
+                    'description' => $item->explanation ?: $prompt,
+                    'left_label' => $item->left_label,
+                    'right_label' => $item->right_label,
+                    'left_text' => $item->left_text,
+                    'right_text' => $item->right_text,
+                    'explanation' => $item->explanation,
+                    'quizType' => 'comparison_card',
+                    'questionType' => 'comparison_card',
+                    'type' => 'comparison_card',
+                    'user' => [
+                        'id' => $item->user?->id,
+                        'name' => $item->user?->name,
+                    ],
+                    'created_at' => $item->created_at,
+                    'updated_at' => $item->updated_at,
+                ];
+            })->values(),
+        ]);
     }
 
     protected function resolveQuizId(string $input): ?int

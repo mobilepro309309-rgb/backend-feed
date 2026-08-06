@@ -17,6 +17,8 @@ class DailyChallenge extends Model
     use HasFactory;
     use SyncsToFeed;
 
+    protected $table = 'daily_challenges';
+
     protected static function booted(): void
     {
         static::deleting(function (self $item): void {

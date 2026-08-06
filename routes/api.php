@@ -136,6 +136,12 @@ $apiRoutes = function (): void {
         Route::get('/posts/{post}/comments', [CommentController::class, 'index']);
         Route::post('/posts/{post}/comments', [CommentController::class, 'store']);
 
+        Route::get('/live-duel-challenges', [LiveDuelChallengeController::class, 'index']);
+        Route::get('/cloud-capsule-challenges', [CloudCapsuleChallengeController::class, 'index']);
+        Route::get('/comparison-challenges/list', [ComparisonChallengeController::class, 'index']);
+        Route::get('/find-the-bug-challenges/list', [FindTheBugChallengeController::class, 'index']);
+        Route::get('/multiple-choice-questions/list', [MultipleChoiceQuestionController::class, 'index']);
+        Route::get('/true-false-questions/list', [TrueFalseQuestionController::class, 'index']);
         Route::post('/live-duel-challenges', [LiveDuelChallengeController::class, 'store']);
         Route::post('/cloud-capsule-challenges', [CloudCapsuleChallengeController::class, 'store']);
         Route::post('/comparison-challenges', [ComparisonChallengeController::class, 'store']);

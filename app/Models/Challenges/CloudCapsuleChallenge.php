@@ -18,6 +18,8 @@ class CloudCapsuleChallenge extends Model
     use HasFactory;
     use SyncsToFeed;
 
+    protected $table = 'cloud_capsule_challenges';
+
     protected static function booted(): void
     {
         static::deleting(function (self $item): void {

@@ -17,6 +17,8 @@ class TrueFalseQuestion extends Model
     use HasFactory;
     use SyncsToFeed;
 
+    protected $table = 'true_false_questions';
+
     protected static function booted(): void
     {
         static::deleting(function (self $item): void {

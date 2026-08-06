@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Challenges;
 
+use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use App\Http\Controllers\Controller;
 use App\Models\Challenges\LiveDuelChallenge;
 use App\Models\User;
@@ -12,8 +13,52 @@ use Illuminate\Support\Facades\Log;
 
 class LiveDuelChallengeController extends Controller
 {
+    use FiltersQuestionListings;
+
     public function __construct(protected NotificationService $notificationService)
     {
+    }
+
+    public function index(Request $request)
+    {
+        $items = $this->applyQuestionListingFilters(
+            LiveDuelChallenge::query()->with('user'),
+            $request
+        )->latest('created_at')->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $items->map(function (LiveDuelChallenge $item): array {
+                $questions = collect($item->questions ?? [])->values()->all();
+                $questionCount = (int) ($item->question_count ?? count($questions));
+
+                return [
+                    'id' => $item->id,
+                    'title' => $item->title,
+                    'subject' => $item->subject,
+                    'school_grade' => $item->school_grade,
+                    'status' => $item->status ?? 'draft',
+                    'badge_text' => $item->badge_text,
+                    'file_url' => $item->file_url ?? null,
+                    'prompt' => $item->challenge_text,
+                    'question' => $item->challenge_text,
+                    'description' => $item->challenge_text,
+                    'challenge_text' => $item->challenge_text,
+                    'question_count' => $questionCount,
+                    'seconds_per_question' => (int) ($item->seconds_per_question ?? 0),
+                    'questions' => $questions,
+                    'quizType' => 'live_duel',
+                    'questionType' => 'live_duel',
+                    'type' => 'live_duel',
+                    'user' => [
+                        'id' => $item->user?->id,
+                        'name' => $item->user?->name,
+                    ],
+                    'created_at' => $item->created_at,
+                    'updated_at' => $item->updated_at,
+                ];
+            })->values(),
+        ]);
     }
 
     public function store(Request $request)

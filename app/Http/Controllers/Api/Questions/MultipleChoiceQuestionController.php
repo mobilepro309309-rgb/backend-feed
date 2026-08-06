@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Questions;
 
+use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use Illuminate\Http\Request;
 
 use App\Http\Controllers\Controller;
@@ -12,8 +13,54 @@ use App\Services\NotificationService;
 
 class MultipleChoiceQuestionController extends Controller
 {
+    use FiltersQuestionListings;
+
     public function __construct(protected NotificationService $notificationService)
     {
+    }
+
+    public function index(Request $request)
+    {
+        $items = $this->applyQuestionListingFilters(
+            MultipleChoiceQuestion::query()->with('user'),
+            $request
+        )->latest('created_at')->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $items->map(function (MultipleChoiceQuestion $item): array {
+                $options = collect($item->options ?? [])->map(function ($opt): array {
+                    return ['label' => (string) $opt, 'value' => (string) $opt];
+                })->values()->all();
+
+                return [
+                    'id' => $item->id,
+                    'title' => $item->title,
+                    'subject' => $item->subject,
+                    'school_grade' => $item->school_grade,
+                    'status' => $item->status ?? 'draft',
+                    'badge_text' => $item->badge_text,
+                    'file_url' => $item->file_url ?? null,
+                    'prompt' => $item->question,
+                    'question' => $item->question,
+                    'description' => $item->question,
+                    'options' => $options,
+                    'choices' => $options,
+                    'correct_index' => (int) ($item->correct_index ?? 0),
+                    'correct_answer_index' => (int) ($item->correct_index ?? 0),
+                    'correctIndex' => (int) ($item->correct_index ?? 0),
+                    'quizType' => 'multiple_choice',
+                    'questionType' => 'multiple_choice',
+                    'type' => 'multiple_choice',
+                    'user' => [
+                        'id' => $item->user?->id,
+                        'name' => $item->user?->name,
+                    ],
+                    'created_at' => $item->created_at,
+                    'updated_at' => $item->updated_at,
+                ];
+            })->values(),
+        ]);
     }
 
     protected function resolveQuizId(string $input): ?int

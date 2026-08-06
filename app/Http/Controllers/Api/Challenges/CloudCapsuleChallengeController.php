@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Challenges;
 
+use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use App\Http\Controllers\Controller;
 use App\Models\Challenges\CloudCapsuleChallenge;
 use App\Models\User;
@@ -11,8 +12,53 @@ use Illuminate\Support\Facades\Log;
 
 class CloudCapsuleChallengeController extends Controller
 {
+    use FiltersQuestionListings;
+
     public function __construct(protected NotificationService $notificationService)
     {
+    }
+
+    public function index(Request $request)
+    {
+        $items = $this->applyQuestionListingFilters(
+            CloudCapsuleChallenge::query()->with('user'),
+            $request
+        )->latest('created_at')->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $items->map(function (CloudCapsuleChallenge $item): array {
+                $prompt = trim((string) ($item->intro_text ?? ''));
+
+                return [
+                    'id' => $item->id,
+                    'title' => $item->title,
+                    'subject' => $item->subject,
+                    'school_grade' => $item->school_grade,
+                    'status' => $item->status ?? 'draft',
+                    'badge_text' => $item->badge_text,
+                    'file_url' => $item->file_url ?? null,
+                    'prompt' => $prompt,
+                    'question' => $item->reveal_text,
+                    'description' => $prompt ?: $item->reveal_text,
+                    'intro_text' => $item->intro_text,
+                    'reveal_text' => $item->reveal_text,
+                    'tip_text' => $item->tip_text,
+                    'mood_text' => $item->mood_text,
+                    'reveal_label' => $item->reveal_label,
+                    'icon' => $item->icon,
+                    'quizType' => 'cloud_capsule',
+                    'questionType' => 'cloud_capsule',
+                    'type' => 'cloud_capsule',
+                    'user' => [
+                        'id' => $item->user?->id,
+                        'name' => $item->user?->name,
+                    ],
+                    'created_at' => $item->created_at,
+                    'updated_at' => $item->updated_at,
+                ];
+            })->values(),
+        ]);
     }
 
     public function store(Request $request)

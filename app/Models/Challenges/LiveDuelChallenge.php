@@ -17,6 +17,8 @@ class LiveDuelChallenge extends Model
     use HasFactory;
     use SyncsToFeed;
 
+    protected $table = 'live_duel_challenges';
+
     protected static function booted(): void
     {
         static::deleting(function (self $item): void {

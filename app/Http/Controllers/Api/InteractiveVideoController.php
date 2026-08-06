@@ -20,7 +20,12 @@ class InteractiveVideoController extends Controller
 
     public function index(Request $request)
     {
-        $videos = InteractiveVideo::with([
+        $user = auth('sanctum')->user() ?? auth()->user();
+        $resolvedGrade = $this->resolveSchoolGrade(
+            $user?->school_grade ?? $user?->grade ?? null
+        ) ?? $this->resolveSchoolGrade($request->query('school_grade', $request->input('school_grade')));
+
+        $videosQuery = InteractiveVideo::with([
             'user',
             'videoQuestions' => function ($query) {
                 $query->select([
@@ -38,7 +43,19 @@ class InteractiveVideoController extends Controller
                     'explanation',
                 ]);
             },
-        ])
+        ]);
+
+        if ($resolvedGrade !== null && $resolvedGrade !== '') {
+            $gradeVariants = $this->getSchoolGradeVariants($resolvedGrade);
+
+            $videosQuery->where(function ($query) use ($gradeVariants) {
+                foreach ($gradeVariants as $variant) {
+                    $query->orWhere('school_grade', $variant);
+                }
+            });
+        }
+
+        $videos = $videosQuery
             ->latest('created_at')
             ->get();
 
@@ -51,6 +68,7 @@ class InteractiveVideoController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'youtube_url' => ['required', 'string', 'url', 'max:2048'],
             'subject' => ['nullable', 'string', 'max:120'],
+            'school_grade' => ['nullable', 'string', 'max:120'],
             'number_of_questions' => ['required', 'integer', 'min:0'],
             'questions' => ['required', 'array', 'min:1'],
             'questions.*.question_text' => ['nullable', 'string'],
@@ -86,6 +104,7 @@ class InteractiveVideoController extends Controller
                 'title' => $validated['title'],
                 'youtube_url' => $validated['youtube_url'],
                 'subject' => $validated['subject'] ?? null,
+                'school_grade' => $validated['school_grade'] ?? null,
                 'number_of_questions' => $validated['number_of_questions'],
             ]);
 
@@ -102,6 +121,7 @@ class InteractiveVideoController extends Controller
                     'stop_minute' => $questionData['stop_minute'],
                     'stop_second' => $questionData['stop_second'],
                     'file_url' => $questionData['file_url'] ?? null,
+                    'explanation' => $questionData['explanation'] ?? null,
                 ]);
             }
 
@@ -144,5 +164,100 @@ class InteractiveVideoController extends Controller
                 'message' => 'Unable to create interactive video.',
             ], 500);
         }
+    }
+
+    private function resolveSchoolGrade(mixed $grade): ?string
+    {
+        $raw = trim((string) $grade);
+
+        if ($raw === '') {
+            return null;
+        }
+
+        if (preg_match('/\d/', $raw)) {
+            return (string) preg_replace('/\D+/', '', $raw);
+        }
+
+        $normalized = strtolower(str_replace([' ', 'ـ', '-'], '', $raw));
+        $normalized = str_replace(['أ', 'إ', 'آ'], 'ا', $normalized);
+
+        $map = [
+            'اول' => '1',
+            'اولي' => '1',
+            'اولى' => '1',
+            'الاول' => '1',
+            'الاولى' => '1',
+            'ثاني' => '2',
+            'ثانيه' => '2',
+            'ثانية' => '2',
+            'التاني' => '2',
+            'التانية' => '2',
+            'تاني' => '2',
+            'تانية' => '2',
+            'ثالث' => '3',
+            'ثالثه' => '3',
+            'ثالثة' => '3',
+            'التالت' => '3',
+            'التالتة' => '3',
+            'تالت' => '3',
+            'تالتة' => '3',
+            'رابع' => '4',
+            'رابعه' => '4',
+            'رابعة' => '4',
+            'خامس' => '5',
+            'خامسة' => '5',
+            'سادس' => '6',
+            'سادسة' => '6',
+            'سابع' => '7',
+            'سابعة' => '7',
+            'ثامن' => '8',
+            'ثامنة' => '8',
+            'تاسع' => '9',
+            'تاسعة' => '9',
+            'عاشر' => '10',
+            'عاشرة' => '10',
+            'حاديعشر' => '11',
+            'الحاديةعشرة' => '11',
+            'ثانيعشر' => '12',
+            'الثانيةعشرة' => '12',
+        ];
+
+        return $map[$normalized] ?? $raw;
+    }
+
+    private function getSchoolGradeVariants(string $grade): array
+    {
+        $normalized = $this->resolveSchoolGrade($grade);
+
+        if ($normalized === null || $normalized === '') {
+            return [];
+        }
+
+        $variants = [
+            $grade,
+            $normalized,
+            (string) (int) $normalized,
+        ];
+
+        $gradeForms = [
+            '1' => ['1', 'اول', 'أول', 'اولى', 'أولى', 'الاول', 'الاولى'],
+            '2' => ['2', 'ثاني', 'ثانيه', 'ثانية', 'تاني', 'تانية', 'التاني', 'التانية'],
+            '3' => ['3', 'ثالث', 'ثالثه', 'ثالثة', 'تالت', 'تالتة', 'التالت', 'التالتة'],
+            '4' => ['4', 'رابع', 'رابعه', 'رابعة'],
+            '5' => ['5', 'خامس', 'خامسة'],
+            '6' => ['6', 'سادس', 'سادسة'],
+            '7' => ['7', 'سابع', 'سابعة'],
+            '8' => ['8', 'ثامن', 'ثامنة'],
+            '9' => ['9', 'تاسع', 'تاسعة'],
+            '10' => ['10', 'عاشر', 'عاشرة'],
+            '11' => ['11', 'حادي عشر', 'الحادية عشرة'],
+            '12' => ['12', 'ثاني عشر', 'الثانية عشرة'],
+        ];
+
+        if (isset($gradeForms[$normalized])) {
+            $variants = array_merge($variants, $gradeForms[$normalized]);
+        }
+
+        return array_values(array_unique(array_filter($variants, fn ($value) => $value !== null && trim((string) $value) !== '')));
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Challenges;
 
+use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use App\Http\Controllers\Controller;
 use App\Models\Challenges\FindTheBugChallenge;
 use App\Models\Message;
@@ -12,8 +13,54 @@ use Illuminate\Support\Facades\Log;
 
 class FindTheBugChallengeController extends Controller
 {
+    use FiltersQuestionListings;
+
     public function __construct(protected NotificationService $notificationService)
     {
+    }
+
+    public function index(Request $request)
+    {
+        $items = $this->applyQuestionListingFilters(
+            FindTheBugChallenge::query()->with('user'),
+            $request
+        )->latest('created_at')->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $items->map(function (FindTheBugChallenge $item): array {
+                $options = collect($item->options ?? [])->map(function ($opt): array {
+                    return ['label' => (string) $opt, 'value' => (string) $opt];
+                })->values()->all();
+
+                return [
+                    'id' => $item->id,
+                    'title' => $item->title,
+                    'subject' => $item->subject,
+                    'school_grade' => $item->school_grade,
+                    'status' => $item->status ?? 'draft',
+                    'badge_text' => $item->badge_text,
+                    'file_url' => $item->file_url ?? null,
+                    'prompt' => $item->prompt,
+                    'question' => $item->prompt,
+                    'description' => $item->prompt,
+                    'options' => $options,
+                    'choices' => $options,
+                    'correct_answer_index' => (int) ($item->correct_answer_index ?? 0),
+                    'correctIndex' => (int) ($item->correct_answer_index ?? 0),
+                    'correct_index' => (int) ($item->correct_answer_index ?? 0),
+                    'quizType' => 'find_the_bug',
+                    'questionType' => 'find_the_bug',
+                    'type' => 'find_the_bug',
+                    'user' => [
+                        'id' => $item->user?->id,
+                        'name' => $item->user?->name,
+                    ],
+                    'created_at' => $item->created_at,
+                    'updated_at' => $item->updated_at,
+                ];
+            })->values(),
+        ]);
     }
 
     protected function resolveQuizId(string $input): ?int
