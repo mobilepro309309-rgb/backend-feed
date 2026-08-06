@@ -113,6 +113,8 @@ $apiRoutes = function (): void {
 
         Route::get('/teacher/my-scopes', [TeacherManagementController::class, 'myScopes']);
         Route::get('/teacher/my-questions-by-category', [TeacherManagementController::class, 'getMyQuestionsByCategory']);
+        Route::put('/teacher/my-questions/{type}/{id}', [TeacherManagementController::class, 'updateMyQuestion']);
+        Route::delete('/teacher/my-questions/{type}/{id}', [TeacherManagementController::class, 'deleteMyQuestion']);
         Route::get('/teacher/pending-questions', [\App\Http\Controllers\ChatController::class, 'getPendingQuestions']);
 
         Route::prefix('admin/teachers')->group(function () {

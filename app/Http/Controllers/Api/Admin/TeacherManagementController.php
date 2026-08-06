@@ -4,6 +4,13 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use App\Http\Controllers\Controller;
+use App\Models\Challenges\CloudCapsuleChallenge;
+use App\Models\Challenges\ComparisonChallenge;
+use App\Models\Challenges\DailyChallenge;
+use App\Models\Challenges\FindTheBugChallenge;
+use App\Models\Challenges\LiveDuelChallenge;
+use App\Models\Questions\MultipleChoiceQuestion;
+use App\Models\Questions\TrueFalseQuestion;
 use App\Models\TeacherScope;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -223,6 +230,244 @@ class TeacherManagementController extends Controller
             'success' => true,
             'items' => $items,
         ]);
+    }
+
+    public function deleteMyQuestion(Request $request, string $type, int $id)
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized',
+            ], 401);
+        }
+
+        $modelClass = $this->getModelClassForQuestionType($type);
+
+        if (! $modelClass) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid question type.',
+            ], 422);
+        }
+
+        $item = $modelClass::where('id', $id)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (! $item) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Question not found or unauthorized.',
+            ], 404);
+        }
+
+        try {
+            $item->delete();
+        } catch (\Throwable $e) {
+            Log::error('[TeacherManagementController] Failed to delete question', [
+                'type' => $type,
+                'id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete the question.',
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم حذف السؤال بنجاح',
+        ]);
+    }
+
+    public function updateMyQuestion(Request $request, string $type, int $id)
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized',
+            ], 401);
+        }
+
+        $modelClass = $this->getModelClassForQuestionType($type);
+
+        if (! $modelClass) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid question type.',
+            ], 422);
+        }
+
+        $item = $modelClass::where('id', $id)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (! $item) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Question not found or unauthorized.',
+            ], 404);
+        }
+
+        $rules = $this->getValidationRulesForQuestionType($type);
+        if (! $rules) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to validate this question type.',
+            ], 422);
+        }
+
+        $validated = $request->validate($rules);
+
+        if (isset($validated['status']) && $validated['status'] === 'published' && ! $item->published_at) {
+            $validated['published_at'] = now();
+        }
+
+        try {
+            $item->fill($validated);
+            $item->save();
+        } catch (\Throwable $e) {
+            Log::error('[TeacherManagementController] Failed to update question', [
+                'type' => $type,
+                'id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update the question.',
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم تعديل السؤال بنجاح',
+            'item' => $item,
+        ]);
+    }
+
+    protected function getValidationRulesForQuestionType(string $type): ?array
+    {
+        return [
+            'multiple_choice' => [
+                'title' => ['required', 'string', 'max:180'],
+                'subject' => ['required', 'string', 'max:120'],
+                'school_grade' => ['nullable', 'string'],
+                'term' => ['nullable', 'in:1,2'],
+                'question' => ['nullable', 'string'],
+                'options' => ['required', 'array', 'min:2'],
+                'options.*' => ['nullable', 'string'],
+                'correct_index' => ['required', 'integer', 'min:0', 'max:3'],
+                'badge_text' => ['nullable', 'string', 'max:120'],
+                'file_url' => ['nullable', 'string', 'max:2048'],
+                'status' => ['nullable', 'in:draft,published'],
+            ],
+            'true_false' => [
+                'title' => ['required', 'string', 'max:180'],
+                'subject' => ['required', 'string', 'max:120'],
+                'school_grade' => ['nullable', 'string'],
+                'term' => ['nullable', 'in:1,2'],
+                'prompt' => ['nullable', 'string'],
+                'correct_answer' => ['required', 'boolean'],
+                'explanation' => ['nullable', 'string'],
+                'badge_text' => ['nullable', 'string', 'max:120'],
+                'file_url' => ['nullable', 'string', 'max:2048'],
+                'status' => ['nullable', 'in:draft,published'],
+            ],
+            'daily_challenge' => [
+                'title' => ['required', 'string', 'max:180'],
+                'subject' => ['required', 'string', 'max:120'],
+                'school_grade' => ['nullable', 'string'],
+                'term' => ['nullable', 'in:1,2'],
+                'prompt' => ['nullable', 'string'],
+                'options' => ['required', 'array', 'min:2'],
+                'options.*' => ['nullable', 'string'],
+                'correct_answer_index' => ['required', 'integer', 'min:0', 'max:3'],
+                'badge_text' => ['nullable', 'string', 'max:120'],
+                'reward_text' => ['nullable', 'string', 'max:180'],
+                'expires_in_hours' => ['nullable', 'integer', 'min:1', 'max:720'],
+                'file_url' => ['nullable', 'string', 'max:2048'],
+                'status' => ['nullable', 'in:draft,published'],
+            ],
+            'comparison' => [
+                'title' => ['required', 'string', 'max:180'],
+                'subject' => ['required', 'string', 'max:120'],
+                'school_grade' => ['nullable', 'string'],
+                'term' => ['nullable', 'in:1,2'],
+                'left_label' => ['nullable', 'string', 'max:80'],
+                'right_label' => ['nullable', 'string', 'max:80'],
+                'left_text' => ['required', 'string'],
+                'right_text' => ['required', 'string'],
+                'explanation' => ['nullable', 'string'],
+                'badge_text' => ['nullable', 'string', 'max:120'],
+                'file_url' => ['nullable', 'string', 'max:2048'],
+                'status' => ['nullable', 'in:draft,published'],
+            ],
+            'find_the_bug' => [
+                'title' => ['required', 'string', 'max:180'],
+                'subject' => ['required', 'string', 'max:120'],
+                'school_grade' => ['nullable', 'string'],
+                'term' => ['nullable', 'in:1,2'],
+                'prompt' => ['nullable', 'string'],
+                'options' => ['required', 'array', 'min:2'],
+                'options.*' => ['nullable', 'string'],
+                'correct_answer_index' => ['required', 'integer', 'min:0', 'max:3'],
+                'badge_text' => ['nullable', 'string', 'max:120'],
+                'file_url' => ['nullable', 'string', 'max:2048'],
+                'status' => ['nullable', 'in:draft,published'],
+            ],
+            'cloud_capsule' => [
+                'title' => ['required', 'string', 'max:180'],
+                'subject' => ['required', 'string', 'max:120'],
+                'school_grade' => ['nullable', 'string'],
+                'term' => ['nullable', 'in:1,2'],
+                'intro_text' => ['nullable', 'string'],
+                'reveal_text' => ['required', 'string'],
+                'tip_text' => ['nullable', 'string'],
+                'mood_text' => ['nullable', 'string'],
+                'reveal_label' => ['nullable', 'string', 'max:120'],
+                'icon' => ['nullable', 'string', 'max:50'],
+                'badge_text' => ['nullable', 'string', 'max:120'],
+                'file_url' => ['nullable', 'string', 'max:2048'],
+                'status' => ['nullable', 'in:draft,published'],
+            ],
+            'live_duel' => [
+                'title' => ['required', 'string', 'max:180'],
+                'subject' => ['required', 'string', 'max:120'],
+                'school_grade' => ['nullable', 'string'],
+                'term' => ['nullable', 'in:1,2'],
+                'challenge_text' => ['nullable', 'string'],
+                'badge_text' => ['nullable', 'string', 'max:80'],
+                'file_url' => ['nullable', 'string', 'max:2048'],
+                'question_count' => ['required', 'integer', 'min:1', 'max:20'],
+                'seconds_per_question' => ['required', 'integer', 'min:5', 'max:120'],
+                'questions' => ['required', 'array', 'min:1'],
+                'questions.*.prompt' => ['nullable', 'string'],
+                'questions.*.options' => ['required', 'array', 'size:4'],
+                'questions.*.options.*' => ['nullable', 'string'],
+                'questions.*.correctIndex' => ['required', 'integer', 'min:0', 'max:3'],
+                'status' => ['nullable', 'in:draft,published'],
+            ],
+        ][$type] ?? null;
+    }
+
+    protected function getModelClassForQuestionType(string $type): ?string
+    {
+        return [
+            'multiple_choice' => MultipleChoiceQuestion::class,
+            'true_false' => TrueFalseQuestion::class,
+            'cloud_capsule' => CloudCapsuleChallenge::class,
+            'daily_challenge' => DailyChallenge::class,
+            'comparison' => ComparisonChallenge::class,
+            'find_the_bug' => FindTheBugChallenge::class,
+            'live_duel' => LiveDuelChallenge::class,
+        ][$type] ?? null;
     }
 
     public function assignScope(Request $request)
