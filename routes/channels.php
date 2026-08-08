@@ -52,6 +52,43 @@ Broadcast::channel('private-chat.{chatId}', function ($user, $chatId) {
     return $isTeacherForChat;
 });
 
+Broadcast::channel('private-duel-user.{userId}', function ($user, $userId) {
+    if (! $user) {
+        return false;
+    }
+
+    return (int) $user->id === (int) $userId;
+});
+
+Broadcast::channel('private-duel.{roomId}', function ($user, $roomId) {
+    if (! $user) {
+        return false;
+    }
+
+    $room = \App\Models\Challenges\DuelRoom::find($roomId);
+    if (! $room) {
+        return false;
+    }
+
+    return (int) $room->creator_id === (int) $user->id
+        || (int) $room->opponent_id === (int) $user->id;
+});
+
+// Authorize the `duel.{roomId}` private channel (used by events broadcasting to PrivateChannel('duel.{id}'))
+Broadcast::channel('duel.{roomId}', function ($user, $roomId) {
+    if (! $user) {
+        return false;
+    }
+
+    $room = \App\Models\Challenges\DuelRoom::find($roomId);
+    if (! $room) {
+        return false;
+    }
+
+    return (int) $room->creator_id === (int) $user->id
+        || (int) $room->opponent_id === (int) $user->id;
+});
+
 Broadcast::channel('private-quiz-comments.{quizId}', function ($user) {
     if (! $user) {
         return false;

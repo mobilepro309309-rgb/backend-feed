@@ -19,6 +19,7 @@ use App\Http\Controllers\KashierController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SavedPostsController;
 use App\Http\Controllers\WalletController;
+use App\Http\Controllers\YouTubeVideoController;
 
 Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
@@ -139,6 +140,10 @@ $apiRoutes = function (): void {
         Route::post('/posts/{post}/comments', [CommentController::class, 'store']);
 
         Route::get('/live-duel-challenges', [LiveDuelChallengeController::class, 'index']);
+        Route::get('/live-duel/eligible-peers', [LiveDuelChallengeController::class, 'getEligiblePeers']);
+        Route::get('/live-duel/room-status/{roomId}', [LiveDuelChallengeController::class, 'getRoomStatus']);
+        Route::post('/live-duel/create-room', [LiveDuelChallengeController::class, 'createRoom']);
+        Route::post('/live-duel/join-room', [LiveDuelChallengeController::class, 'joinRoom']);
         Route::get('/cloud-capsule-challenges', [CloudCapsuleChallengeController::class, 'index']);
         Route::get('/comparison-challenges/list', [ComparisonChallengeController::class, 'index']);
         Route::get('/find-the-bug-challenges/list', [FindTheBugChallengeController::class, 'index']);
@@ -153,6 +158,7 @@ $apiRoutes = function (): void {
         Route::post('/true-false-questions', [TrueFalseQuestionController::class, 'store']);
         Route::get('/interactive-videos', [InteractiveVideoController::class, 'index']);
         Route::post('/interactive-videos', [InteractiveVideoController::class, 'store']);
+        Route::post('/youtube/videos/upload', [YouTubeVideoController::class, 'uploadVideo']);
     });
 
     Route::post('/wallet/webhook', [WalletController::class, 'webhook']);

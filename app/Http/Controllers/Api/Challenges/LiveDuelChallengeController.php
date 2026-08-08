@@ -4,12 +4,18 @@ namespace App\Http\Controllers\Api\Challenges;
 
 use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use App\Http\Controllers\Controller;
+use App\Events\DuelInvitedEvent;
+use App\Events\DuelJoinedEvent;
+use App\Models\Challenges\DuelParticipant;
+use App\Models\Challenges\DuelRoom;
 use App\Models\Challenges\LiveDuelChallenge;
 use App\Models\User;
 use App\Services\NotificationService;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Log;
 
 class LiveDuelChallengeController extends Controller
 {
@@ -59,6 +65,239 @@ class LiveDuelChallengeController extends Controller
                 ];
             })->values(),
         ]);
+    }
+
+    public function getEligiblePeers(Request $request)
+    {
+        try {
+            $currentUser = auth()->user();
+            if (! $currentUser) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Unauthenticated',
+                ], 401);
+            }
+
+            $search = $request->query('search');
+            $challengeId = $request->query('challenge_id');
+            $userTable = (new User())->getTable();
+            $hasRoleColumn = Schema::hasColumn($userTable, 'role');
+            $hasSchoolGradeColumn = Schema::hasColumn($userTable, 'school_grade');
+            $hasCreatedAtColumn = Schema::hasColumn($userTable, 'created_at');
+
+            Log::debug('[LiveDuel] getEligiblePeers request', [
+                'user_id' => $currentUser->id,
+                'school_grade' => $currentUser->school_grade,
+                'challenge_id' => $challengeId,
+                'search' => $search,
+                'has_role_column' => $hasRoleColumn,
+                'has_school_grade_column' => $hasSchoolGradeColumn,
+                'has_created_at_column' => $hasCreatedAtColumn,
+            ]);
+
+            $query = User::query()
+                ->where('id', '!=', $currentUser->id);
+
+            if ($hasRoleColumn) {
+                $query->where('role', 'user');
+            }
+
+            if ($hasSchoolGradeColumn && $currentUser->school_grade !== null) {
+                $query->where('school_grade', $currentUser->school_grade);
+            }
+
+            if ($search) {
+                $query->where('name', 'LIKE', "%{$search}%");
+            }
+
+            if ($challengeId) {
+                Log::debug('[LiveDuel] getEligiblePeers ignoring challenge_id filter', [
+                    'challenge_id' => $challengeId,
+                ]);
+            }
+
+            $selectColumns = ['id', 'name'];
+            if ($hasSchoolGradeColumn) {
+                $selectColumns[] = 'school_grade';
+            }
+            if ($hasCreatedAtColumn) {
+                $selectColumns[] = 'created_at';
+            }
+
+            $peers = $query
+                ->select($selectColumns)
+                ->limit(20)
+                ->get();
+
+            Log::debug('[LiveDuel] getEligiblePeers result count', [
+                'count' => $peers->count(),
+                'peer_ids' => $peers->pluck('id')->all(),
+            ]);
+
+            return response()->json([
+                'status' => 'success',
+                'my_grade' => $currentUser->school_grade,
+                'peers' => $peers,
+            ]);
+        } catch (\Throwable $exception) {
+            Log::error('[LiveDuel] getEligiblePeers failed', [
+                'message' => $exception->getMessage(),
+                'line' => $exception->getLine(),
+                'file' => $exception->getFile(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'حدث خطأ أثناء جلب الزملاء المتاحين. حاول مرة أخرى.',
+            ], 500);
+        }
+    }
+
+    public function createRoom(Request $request)
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'challenge_id' => ['required', 'exists:live_duel_challenges,id'],
+            'opponent_id' => ['required', 'exists:users,id'],
+        ]);
+
+        if ((int) $validated['opponent_id'] === $user->id) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'لا يمكن دعوة نفسك إلى غرفة المبارزة',
+            ], 422);
+        }
+
+        $room = DB::transaction(function () use ($validated, $user) {
+            $room = DuelRoom::create([
+                'challenge_id' => $validated['challenge_id'],
+                'creator_id' => $user->id,
+                'opponent_id' => $validated['opponent_id'],
+                'status' => 'waiting',
+            ]);
+
+            DuelParticipant::create([
+                'room_id' => $room->id,
+                'user_id' => $user->id,
+                'status' => 'ready',
+            ]);
+
+            DuelParticipant::create([
+                'room_id' => $room->id,
+                'user_id' => $validated['opponent_id'],
+                'status' => 'joined',
+            ]);
+
+            return $room;
+        });
+
+        $room->load(['challenge', 'creator', 'opponent', 'participants.user']);
+
+        broadcast(new DuelInvitedEvent($room))->toOthers();
+
+        try {
+            $notificationResult = $this->notificationService->sendNotificationToUser(
+                $validated['opponent_id'],
+                [
+                    'title' => 'تحدي جديد ⚔️',
+                    'body' => "أرسل لك {$user->name} دعوة لمبارزة أذكياء!",
+                    'type' => 'live_duel_invite',
+                    'data' => [
+                        'room_id' => $room->id,
+                        'action' => 'open_duel_invite',
+                        'challenge_id' => $room->challenge_id,
+                    ],
+                ]
+            );
+            Log::debug('[LiveDuel] Invite notification queued', [
+                'room_id' => $room->id,
+                'opponent_id' => $validated['opponent_id'],
+                'notification' => $notificationResult,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('[LiveDuel] Failed to queue invite notification', [
+                'room_id' => $room->id,
+                'opponent_id' => $validated['opponent_id'],
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'تم إنشاء غرفة التحدي بنجاح',
+            'room' => $room,
+        ]);
+    }
+
+    public function joinRoom(Request $request)
+    {
+        $roomId = $request->input('room_id');
+
+        if (! $roomId) {
+            return response()->json(['message' => 'Room ID is required'], 422);
+        }
+
+        $room = DuelRoom::find($roomId);
+
+        if (! $room) {
+            return response()->json(['message' => 'Room not found'], 404);
+        }
+
+        // Explicitly update attributes
+        $room->opponent_id = auth()->id();
+        $room->status = 'active'; // Force DB state change
+        $room->started_at = now();
+
+        // Save to Database
+        $saved = $room->save();
+
+        Log::info("🔥 [JOIN ROOM DB CHECK] Room {$roomId} saved status: " . ($saved ? 'ACTIVE' : 'FAILED'));
+
+        // Broadcast WebSocket Event
+        try {
+            broadcast(new DuelJoinedEvent($room));
+        } catch (\Exception $e) {
+            Log::error('Broadcast error in joinRoom: ' . $e->getMessage());
+        }
+
+        $room->load(['challenge']);
+
+        return response()->json([
+            'status' => 'active',
+            'started_at' => $room->started_at->toIso8601String(),
+            'questions' => $room->challenge->questions ?? [],
+            'room' => $room,
+        ], 200);
+    }
+
+    public function getRoomStatus($roomId)
+    {
+        // 1. STRICT QUERY: Fetch room specifically by its Primary Key ID
+        $room = DuelRoom::where('id', $roomId)->first();
+
+        if (! $room) {
+            return response()->json(['message' => 'الغرفة غير موجودة'], 404);
+        }
+
+        // 2. Clear any model internal cache / refresh directly from Database table
+        try {
+            $room->refresh();
+        } catch (\Throwable $e) {
+            Log::warning("[LiveDuel] getRoomStatus refresh failed for room {$roomId}: " . $e->getMessage());
+        }
+
+        // 3. Load associated challenge for questions
+        $room->load(['challenge']);
+
+        Log::info("📡 [POLL STATUS CHECK] Requested Room ID: {$roomId} | Actual DB Status: {$room->status} \vert{} StartedAt: {$room->started_at}");
+
+        return response()->json([
+            'room_id' => (int) $room->id,
+            'status' => (string) $room->status,
+            'started_at' => $room->started_at ? $room->started_at->toIso8601String() : null,
+            'questions' => $room->challenge->questions ?? [],
+        ])->header('Cache-Control', 'no-cache, no-store, must-revalidate');
     }
 
     public function store(Request $request)
