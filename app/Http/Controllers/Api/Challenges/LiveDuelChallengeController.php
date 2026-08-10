@@ -2,20 +2,15 @@
 
 namespace App\Http\Controllers\Api\Challenges;
 
+use Illuminate\Support\Facades\{DB, Log, Schema};
+use Illuminate\Http\{Request, UploadedFile};
+
 use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use App\Http\Controllers\Controller;
-use App\Events\DuelInvitedEvent;
-use App\Events\DuelJoinedEvent;
-use App\Models\Challenges\DuelParticipant;
-use App\Models\Challenges\DuelRoom;
-use App\Models\Challenges\LiveDuelChallenge;
+use App\Events\{DuelInvitedEvent, DuelJoinedEvent};
+use App\Models\Challenges\{DuelParticipant, DuelRoom, LiveDuelChallenge};
 use App\Models\User;
 use App\Services\NotificationService;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Http\Request;
-use Illuminate\Http\UploadedFile;
 
 class LiveDuelChallengeController extends Controller
 {
@@ -110,12 +105,6 @@ class LiveDuelChallengeController extends Controller
                 $query->where('name', 'LIKE', "%{$search}%");
             }
 
-            if ($challengeId) {
-                Log::debug('[LiveDuel] getEligiblePeers ignoring challenge_id filter', [
-                    'challenge_id' => $challengeId,
-                ]);
-            }
-
             $selectColumns = ['id', 'name'];
             if ($hasSchoolGradeColumn) {
                 $selectColumns[] = 'school_grade';
@@ -128,11 +117,6 @@ class LiveDuelChallengeController extends Controller
                 ->select($selectColumns)
                 ->limit(20)
                 ->get();
-
-            Log::debug('[LiveDuel] getEligiblePeers result count', [
-                'count' => $peers->count(),
-                'peer_ids' => $peers->pluck('id')->all(),
-            ]);
 
             return response()->json([
                 'status' => 'success',
@@ -210,17 +194,8 @@ class LiveDuelChallengeController extends Controller
                     ],
                 ]
             );
-            Log::debug('[LiveDuel] Invite notification queued', [
-                'room_id' => $room->id,
-                'opponent_id' => $validated['opponent_id'],
-                'notification' => $notificationResult,
-            ]);
         } catch (\Throwable $e) {
-            Log::warning('[LiveDuel] Failed to queue invite notification', [
-                'room_id' => $room->id,
-                'opponent_id' => $validated['opponent_id'],
-                'error' => $e->getMessage(),
-            ]);
+            Log::warning('[LiveDuel] Failed to queue invite notification: ' . $e->getMessage());
         }
 
         return response()->json([
@@ -232,72 +207,90 @@ class LiveDuelChallengeController extends Controller
 
     public function joinRoom(Request $request)
     {
-        $roomId = $request->input('room_id');
+        $roomId = $request->input('room_id') ?? $request->input('roomId') ?? $request->input('id');
 
         if (! $roomId) {
-            return response()->json(['message' => 'Room ID is required'], 422);
+            return response()->json(['message' => 'رقم الغرفة مطلوب'], 422);
         }
 
-        $room = DuelRoom::find($roomId);
+        $userId = auth()->id() ?? $request->user()?->id;
 
-        if (! $room) {
-            return response()->json(['message' => 'Room not found'], 404);
-        }
+        // Perform transactional update on SQL database directly
+        $updated = DB::transaction(function () use ($roomId, $userId) {
+            $affected = DB::table('duel_rooms')
+                ->where('id', $roomId)
+                ->update([
+                    'opponent_id' => $userId,
+                    'status' => 'active',
+                    'started_at' => now(),
+                    'updated_at' => now(),
+                ]);
 
-        // Explicitly update attributes
-        $room->opponent_id = auth()->id();
-        $room->status = 'active'; // Force DB state change
-        $room->started_at = now();
+            // Update participant status for joiner
+            DB::table('duel_participants')
+                ->where('room_id', $roomId)
+                ->where('user_id', $userId)
+                ->update(['status' => 'ready']);
 
-        // Save to Database
-        $saved = $room->save();
+            return $affected;
+        });
 
-        Log::info("🔥 [JOIN ROOM DB CHECK] Room {$roomId} saved status: " . ($saved ? 'ACTIVE' : 'FAILED'));
+        Log::info("🔥 [JOIN ROOM HARD UPDATE] Room {$roomId} joined by User {$userId}. Affected rows: {$updated}");
 
-        // Broadcast WebSocket Event
-        try {
-            broadcast(new DuelJoinedEvent($room));
-        } catch (\Exception $e) {
-            Log::error('Broadcast error in joinRoom: ' . $e->getMessage());
-        }
-
-        $room->load(['challenge']);
-
-        return response()->json([
-            'status' => 'active',
-            'started_at' => $room->started_at->toIso8601String(),
-            'questions' => $room->challenge->questions ?? [],
-            'room' => $room,
-        ], 200);
-    }
-
-    public function getRoomStatus($roomId)
-    {
-        // 1. STRICT QUERY: Fetch room specifically by its Primary Key ID
-        $room = DuelRoom::where('id', $roomId)->first();
+        // Fetch fresh Eloquent model for broadcasting and response
+        $room = DuelRoom::with(['challenge', 'creator', 'opponent'])->find($roomId);
 
         if (! $room) {
             return response()->json(['message' => 'الغرفة غير موجودة'], 404);
         }
 
-        // 2. Clear any model internal cache / refresh directly from Database table
+        // Broadcast WebSocket Event with ACTIVE room
         try {
-            $room->refresh();
-        } catch (\Throwable $e) {
-            Log::warning("[LiveDuel] getRoomStatus refresh failed for room {$roomId}: " . $e->getMessage());
+            broadcast(new DuelJoinedEvent($room))->toOthers();
+        } catch (\Exception $e) {
+            Log::error('Broadcast error in joinRoom: ' . $e->getMessage());
         }
 
-        // 3. Load associated challenge for questions
-        $room->load(['challenge']);
+        $questions = $room->challenge->questions ?? [];
 
-        Log::info("📡 [POLL STATUS CHECK] Requested Room ID: {$roomId} | Actual DB Status: {$room->status} \vert{} StartedAt: {$room->started_at}");
+        return response()->json([
+            'status' => 'active',
+            'room_id' => (int) $room->id,
+            'started_at' => $room->started_at ? $room->started_at->toIso8601String() : now()->toIso8601String(),
+            'questions' => $questions,
+            'room' => $room,
+        ], 200)->header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+
+    public function getRoomStatus($roomId)
+    {
+        // Direct Query Builder SQL Execution bypassing Eloquent models/caches
+        $room = DB::table('duel_rooms')->where('id', $roomId)->first();
+
+        if (! $room) {
+            return response()->json(['message' => 'الغرفة غير موجودة'], 404);
+        }
+
+        $questions = [];
+        if (! empty($room->challenge_id)) {
+            $challenge = DB::table('live_duel_challenges')->where('id', $room->challenge_id)->first();
+            if ($challenge && ! empty($challenge->questions)) {
+                $questions = is_string($challenge->questions) 
+                    ? json_decode($challenge->questions, true) 
+                    : $challenge->questions;
+            }
+        }
+
+        Log::info("📡 [POLL STATUS HARD CHECK] Requested Room ID: {$roomId} | Direct DB Raw Status: '{$room->status}' | StartedAt: '{$room->started_at}'");
+
+        header('Cache-Control', 'no-cache, no-store, must-revalidate');
 
         return response()->json([
             'room_id' => (int) $room->id,
-            'status' => (string) $room->status,
-            'started_at' => $room->started_at ? $room->started_at->toIso8601String() : null,
-            'questions' => $room->challenge->questions ?? [],
-        ])->header('Cache-Control', 'no-cache, no-store, must-revalidate');
+            'status' => (string) $room->status, // Guaranteed raw DB string ('active' or 'waiting')
+            'started_at' => $room->started_at ? \Carbon\Carbon::parse($room->started_at)->toIso8601String() : null,
+            'questions' => $questions,
+        ]);
     }
 
     public function store(Request $request)
@@ -380,49 +373,6 @@ class LiveDuelChallengeController extends Controller
             'status' => $validated['status'] ?? 'draft',
             'published_at' => ($validated['status'] ?? 'draft') === 'published' ? now() : null,
         ]);
-
-        try {
-            $challengeGrade = (string) ($challenge->school_grade ?? '');
-            $recipients = User::where('role', 'user')
-                ->where('id', '!=', $challenge->user_id)
-                ->whereHas('devices')
-                ->when($challengeGrade !== '', function ($query) use ($challengeGrade) {
-                    $query->where(function ($gradeQuery) use ($challengeGrade) {
-                        $gradeQuery->where('school_grade', $challengeGrade)
-                            ->orWhere('school_grade', (int) $challengeGrade);
-                    });
-                })
-                ->get();
-
-            foreach ($recipients as $recipient) {
-                try {
-                    $this->notificationService->sendNotification(
-                        $recipient,
-                        'تمت إضافة مبارزة مباشرة جديدة!',
-                        "تمت إضافة مبارزة مباشرة جديدة: {$challenge->title}",
-                        [
-                            'type' => 'new_live_duel',
-                            'challenge_id' => $challenge->id,
-                            'target_id' => $challenge->id,
-                            'target_type' => 'quiz',
-                            'title' => $challenge->title,
-                            'subject' => $challenge->subject,
-                        ]
-                    );
-                } catch (\Throwable $e) {
-                    Log::warning('[LiveDuelChallengeController] Failed to send push notification to student', [
-                        'recipient_id' => $recipient->id,
-                        'challenge_id' => $challenge->id,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
-        } catch (\Throwable $e) {
-            Log::error('[LiveDuelChallengeController] Failed to dispatch notifications after challenge save', [
-                'challenge_id' => $challenge->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
 
         return response()->json([
             'message' => 'تم حفظ التحدي بنجاح',

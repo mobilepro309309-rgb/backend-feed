@@ -1,25 +1,17 @@
 <?php
 
-use Illuminate\Support\Facades\Broadcast;
-use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\{Broadcast, Route};
 
-use App\Http\Controllers\Api\Users\UserController;
-use App\Http\Controllers\Api\Users\UserProfileController;
+use App\Http\Controllers\Api\Users\{UserController, UserProfileController};
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Posts\{CommentController, PostController};
 use App\Http\Controllers\Api\{InteractiveVideoController, LatestQuestionsController, QuizBatchController, UserSelectionController};
-use App\Http\Controllers\Api\Admin\AdminRoleController;
-use App\Http\Controllers\Api\Admin\TeacherManagementController;
+use App\Http\Controllers\Api\Admin\{AdminRoleController, TeacherManagementController};
 use App\Http\Controllers\Api\Location\{LocationController, NearbyStudentsController};
-use App\Http\Controllers\Api\Challenges\{CloudCapsuleChallengeController, ComparisonChallengeController, DailyChallengeController, FindTheBugChallengeController, LiveDuelChallengeController};
-use App\Http\Controllers\Api\Challenges\CheatSheetController;
+use App\Http\Controllers\Api\Challenges\{CheatSheetController, CloudCapsuleChallengeController, ComparisonChallengeController, DailyChallengeController, FindTheBugChallengeController, LiveDuelChallengeController};
 use App\Http\Controllers\Api\Questions\{MultipleChoiceQuestionController, TrueFalseQuestionController};
 use App\Http\Controllers\Api\v1\FeedController;
-use App\Http\Controllers\KashierController;
-use App\Http\Controllers\NotificationController;
-use App\Http\Controllers\SavedPostsController;
-use App\Http\Controllers\WalletController;
-use App\Http\Controllers\YouTubeVideoController;
+use App\Http\Controllers\{KashierController, NotificationController, SavedPostsController, WalletController, YouTubeVideoController};
 
 Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
@@ -85,10 +77,7 @@ $apiRoutes = function (): void {
         Route::get('/user/profile', [UserProfileController::class, 'show']);
         Route::put('/user/profile', [UserProfileController::class, 'update']);
         Route::post('/wallet/top-up', [WalletController::class, 'topUp']);
-        // legacy profile route removed
         Route::get('/profile/{id}/latest-questions', [LatestQuestionsController::class, 'getUserQuestions']);
-        // Alternate route for clients expecting `/users/{id}/latest-questions`
-        // Alias route to support frontend calling /users/{id}/latest-questions
 
         Route::put('/user/legacy-profile', [UserController::class, 'updateProfile']);
         Route::get('/nearby-students', [NearbyStudentsController::class, 'getNearbyCountOrList']);
@@ -139,11 +128,17 @@ $apiRoutes = function (): void {
         Route::get('/posts/{post}/comments', [CommentController::class, 'index']);
         Route::post('/posts/{post}/comments', [CommentController::class, 'store']);
 
+        // Live Duel Engine Core Routes & Aliases
         Route::get('/live-duel-challenges', [LiveDuelChallengeController::class, 'index']);
         Route::get('/live-duel/eligible-peers', [LiveDuelChallengeController::class, 'getEligiblePeers']);
         Route::get('/live-duel/room-status/{roomId}', [LiveDuelChallengeController::class, 'getRoomStatus']);
         Route::post('/live-duel/create-room', [LiveDuelChallengeController::class, 'createRoom']);
+        
+        // Strict Join Routes with Aliases for Maximum Compatibility
         Route::post('/live-duel/join-room', [LiveDuelChallengeController::class, 'joinRoom']);
+        Route::post('/live-duel/join', [LiveDuelChallengeController::class, 'joinRoom']);
+        Route::post('/live-duel/accept-challenge', [LiveDuelChallengeController::class, 'joinRoom']);
+
         Route::get('/cloud-capsule-challenges', [CloudCapsuleChallengeController::class, 'index']);
         Route::get('/comparison-challenges/list', [ComparisonChallengeController::class, 'index']);
         Route::get('/find-the-bug-challenges/list', [FindTheBugChallengeController::class, 'index']);
