@@ -481,8 +481,9 @@ class TeacherManagementController extends Controller
         ]);
 
         $user = User::findOrFail($validated['user_id']);
+        $normalizedRole = strtolower(trim((string) $user->role));
 
-        if (strtolower((string) $user->role) === 'user') {
+        if (! in_array($normalizedRole, ['teacher', 'main-admin'], true)) {
             $user->forceFill(['role' => 'teacher'])->save();
         }
 

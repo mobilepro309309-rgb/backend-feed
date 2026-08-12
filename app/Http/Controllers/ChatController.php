@@ -630,7 +630,17 @@ class ChatController extends Controller
                 ]);
             }
 
-            broadcast(new MessageSent($message))->toOthers();
+            try {
+                broadcast(new MessageSent($message))->toOthers();
+            } catch (\Throwable $broadcastException) {
+                Log::error('Chat broadcast failed', [
+                    'sender_id' => $senderId,
+                    'receiver_id' => $receiverId,
+                    'chat_id' => $chatId,
+                    'error' => $broadcastException->getMessage(),
+                    'payload' => $validated,
+                ]);
+            }
 
             return response()->json([
                 'message' => $message,
@@ -740,7 +750,18 @@ class ChatController extends Controller
             'request' => $request->all(),
         ]);
 
-        broadcast(new MessageSent($message))->toOthers();
+        try {
+            broadcast(new MessageSent($message))->toOthers();
+        } catch (\Throwable $broadcastException) {
+            Log::error('Shared message broadcast failed', [
+                'sender_id' => $senderId,
+                'receiver_id' => $receiverId,
+                'chat_id' => $chatId,
+                'message_id' => $message->id,
+                'error' => $broadcastException->getMessage(),
+                'payload' => $request->all(),
+            ]);
+        }
 
         return response()->json([
             'message' => $message,

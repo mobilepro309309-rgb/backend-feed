@@ -40,6 +40,20 @@ return [
         'service_role_key' => env('SUPABASE_SERVICE_ROLE_KEY'),
     ],
 
+    'storage' => [
+        'driver' => env('FILESYSTEM_DRIVER', 'r2'),
+        'public_domain' => env('STORAGE_PUBLIC_DOMAIN', ''),
+    ],
+
+    'cloudflare_r2' => [
+        'account_id' => env('CLOUDFLARE_R2_ACCOUNT_ID'),
+        'access_key_id' => env('CLOUDFLARE_R2_ACCESS_KEY_ID'),
+        'secret_access_key' => env('CLOUDFLARE_R2_SECRET_ACCESS_KEY'),
+        'bucket' => env('CLOUDFLARE_R2_BUCKET', 'app-storage'),
+        'public_url' => env('STORAGE_PUBLIC_DOMAIN') ?: env('CLOUDFLARE_R2_PUBLIC_URL', ''),
+        'endpoint' => env('CLOUDFLARE_R2_ENDPOINT'),
+    ],
+
     'paymob' => [
         'api_key' => env('PAYMOB_API_KEY'),
         'public_key' => env('PAYMOB_PUBLIC_KEY'),

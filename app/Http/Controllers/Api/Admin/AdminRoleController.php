@@ -30,8 +30,16 @@ class AdminRoleController extends Controller
         'technical_support_admin',
     ];
 
-    public function index()
+    public function index(Request $request)
     {
+        $currentUser = $request->user();
+
+        if (! $currentUser || $currentUser->role !== 'main-admin') {
+            return response()->json([
+                'message' => 'فقط المستخدم الرئيسي يمكنه إدارة الأدوار والصلاحيات',
+            ], 403);
+        }
+
         $users = User::whereIn('role', $this->adminRoles)
             ->orderByDesc('id')
             ->get();
@@ -42,8 +50,16 @@ class AdminRoleController extends Controller
         ]);
     }
 
-    public function options()
+    public function options(Request $request)
     {
+        $currentUser = $request->user();
+
+        if (! $currentUser || $currentUser->role !== 'main-admin') {
+            return response()->json([
+                'message' => 'فقط المستخدم الرئيسي يمكنه إدارة الأدوار والصلاحيات',
+            ], 403);
+        }
+
         return response()->json([
             'data' => [
                 ['value' => 'reply_questions_admin', 'label' => 'ادمن للرد على الأسئلة'],

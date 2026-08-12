@@ -123,6 +123,7 @@ $apiRoutes = function (): void {
         Route::delete('/posts/{post}/react', [PostController::class, 'removeReaction']);
 
         Route::post('/storage/presign', [\App\Http\Controllers\Api\StorageController::class, 'presign']);
+        Route::post('/storage/private-file-url', [\App\Http\Controllers\Api\StorageController::class, 'getPrivateFileUrl']);
 
         // Comments System Routes
         Route::get('/posts/{post}/comments', [CommentController::class, 'index']);
