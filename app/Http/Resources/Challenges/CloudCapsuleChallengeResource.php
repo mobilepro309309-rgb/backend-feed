@@ -11,6 +11,8 @@ class CloudCapsuleChallengeResource extends JsonResource
 {
     public function toArray($request): array
     {
+        $quizAccessService = app(\App\Services\QuizAccessService::class);
+
         return [
             'id' => $this->id,
             'user_id' => $this->user_id,
@@ -28,6 +30,7 @@ class CloudCapsuleChallengeResource extends JsonResource
             'published_at' => $this->published_at,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
+            'access_rules' => $quizAccessService->buildAccessRulesObject('cloud_capsule', $request->user()),
         ];
     }
 }

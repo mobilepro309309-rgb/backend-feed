@@ -8,6 +8,7 @@ use App\Models\Challenges\ComparisonChallenge;
 use App\Models\Message;
 use App\Models\User;
 use App\Services\NotificationService;
+use App\Services\QuizAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -15,12 +16,15 @@ class ComparisonChallengeController extends Controller
 {
     use FiltersQuestionListings;
 
-    public function __construct(protected NotificationService $notificationService)
-    {
+    public function __construct(
+        protected NotificationService $notificationService,
+        protected QuizAccessService $quizAccessService,
+    ) {
     }
 
     public function index(Request $request)
     {
+        $user = $request->user();
         $items = $this->applyQuestionListingFilters(
             ComparisonChallenge::query()->with('user'),
             $request
@@ -28,10 +32,10 @@ class ComparisonChallengeController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $items->map(function (ComparisonChallenge $item): array {
+            'data' => $items->map(function (ComparisonChallenge $item) use ($user): array {
                 $prompt = trim(($item->left_text ?? '') . ' vs ' . ($item->right_text ?? ''));
 
-                return [
+                $quizData = [
                     'id' => $item->id,
                     'title' => $item->title,
                     'subject' => $item->subject,
@@ -57,6 +61,13 @@ class ComparisonChallengeController extends Controller
                     'created_at' => $item->created_at,
                     'updated_at' => $item->updated_at,
                 ];
+
+                // Append access_rules for the quiz
+                if ($user) {
+                    $quizData['access_rules'] = $this->quizAccessService->buildAccessRulesObject('comparison_card', $user);
+                }
+
+                return $quizData;
             })->values(),
         ]);
     }

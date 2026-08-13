@@ -6,10 +6,13 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Log;
 
 use App\Http\Resources\Challenges\{CloudCapsuleChallengeResource, ComparisonChallengeResource, DailyChallengeResource, FindTheBugChallengeResource, LiveDuelChallengeResource};
 use App\Http\Resources\Posts\PostResource;
 use App\Http\Resources\Questions\{MultipleChoiceQuestionResource as McqQuestionResource, TrueFalseQuestionResource};
+use App\Services\QuizAccessService;
+use App\Models\UserQuizAttempt;
 
 class FeedResource extends JsonResource
 {
@@ -56,6 +59,75 @@ class FeedResource extends JsonResource
             default => 'unknown',
         } : null;
 
+        $accessRules = null;
+        if ($feedable && $type && in_array($type, ['cloud-capsule-challenge', 'live-duel-challenge', 'comparison-challenge', 'find-the-bug-challenge', 'daily-challenge', 'multiple-choice-question', 'true-false-question'], true)) {
+            $quizType = UserQuizAttempt::normalizeQuizType($type);
+
+            if ($quizType) {
+                $accessRules = app(QuizAccessService::class)->buildAccessRulesObject($quizType, $request->user());
+            }
+        }
+
+        // Check for user submission (ONLY for quiz types, EXCLUDING comparison_card and cloud_capsule)
+        $userSubmission = null;
+        if ($feedable && $type && in_array($type, ['find-the-bug-challenge', 'daily-challenge', 'live-duel-challenge', 'multiple-choice-question', 'true-false-question'], true)) {
+            $quizType = UserQuizAttempt::normalizeQuizType($type);
+
+            if ($quizType) {
+                $userId = (int) ($request->user()?->id ?? auth('sanctum')->id() ?? auth()->id() ?? 0);
+                $feedItemId = (int) ($this->id ?? 0);
+                $detailsId = null;
+
+                if (is_array($details) && isset($details['id'])) {
+                    $detailsId = (int) $details['id'];
+                } elseif (is_object($details) && isset($details->id)) {
+                    $detailsId = (int) $details->id;
+                }
+
+                $feedableId = (int) ($feedable->id ?? 0);
+                $candidateQuizIds = array_values(array_unique(array_filter([
+                    $feedItemId,
+                    $detailsId,
+                    $feedableId,
+                ], fn ($id) => $id > 0)));
+
+                $attempt = null;
+                $resolvedQuizId = $candidateQuizIds[0] ?? null;
+
+                foreach ($candidateQuizIds as $candidateQuizId) {
+                    $candidateAttempt = UserQuizAttempt::getUserAttempt($userId, $quizType, $candidateQuizId);
+                    if ($candidateAttempt) {
+                        $attempt = $candidateAttempt;
+                        $resolvedQuizId = $candidateQuizId;
+                        break;
+                    }
+                }
+
+                if ($attempt) {
+                    $userSubmission = [
+                        'has_answered' => true,
+                        'user_answer' => $attempt->user_answer,
+                        'is_correct' => (bool) $attempt->is_correct,
+                    ];
+                } else {
+                    $userSubmission = [
+                        'has_answered' => false,
+                        'user_answer' => null,
+                        'is_correct' => false,
+                    ];
+                }
+
+                Log::info("CHECK ATTEMPT: User {$userId} | Type {$quizType} | ID {$resolvedQuizId} => Found: " . ($attempt ? 'YES' : 'NO'));
+                Log::info('[FeedResource] quiz submission lookup', [
+                    'user_id' => $userId,
+                    'quiz_type' => $quizType,
+                    'candidate_quiz_ids' => $candidateQuizIds,
+                    'resolved_quiz_id' => $resolvedQuizId,
+                    'user_submission' => $userSubmission,
+                ]);
+            }
+        }
+
         return [
             'id' => $this->id,
             'type' => $type,
@@ -63,6 +135,8 @@ class FeedResource extends JsonResource
             'status' => $this->status,
             'created_at' => $this->created_at?->toIso8601String(),
             'details' => $details,
+            'access_rules' => $accessRules,
+            'user_submission' => $userSubmission,
         ];
     }
 }

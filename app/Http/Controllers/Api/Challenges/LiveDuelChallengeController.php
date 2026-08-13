@@ -11,17 +11,21 @@ use App\Events\{DuelInvitedEvent, DuelJoinedEvent};
 use App\Models\Challenges\{DuelParticipant, DuelRoom, LiveDuelChallenge};
 use App\Models\User;
 use App\Services\NotificationService;
+use App\Services\QuizAccessService;
 
 class LiveDuelChallengeController extends Controller
 {
     use FiltersQuestionListings;
 
-    public function __construct(protected NotificationService $notificationService)
-    {
+    public function __construct(
+        protected NotificationService $notificationService,
+        protected QuizAccessService $quizAccessService,
+    ) {
     }
 
     public function index(Request $request)
     {
+        $user = $request->user();
         $items = $this->applyQuestionListingFilters(
             LiveDuelChallenge::query()->with('user'),
             $request
@@ -29,11 +33,11 @@ class LiveDuelChallengeController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $items->map(function (LiveDuelChallenge $item): array {
+            'data' => $items->map(function (LiveDuelChallenge $item) use ($user): array {
                 $questions = collect($item->questions ?? [])->values()->all();
                 $questionCount = (int) ($item->question_count ?? count($questions));
 
-                return [
+                $quizData = [
                     'id' => $item->id,
                     'title' => $item->title,
                     'subject' => $item->subject,
@@ -58,6 +62,13 @@ class LiveDuelChallengeController extends Controller
                     'created_at' => $item->created_at,
                     'updated_at' => $item->updated_at,
                 ];
+
+                // Append access_rules for the quiz
+                if ($user) {
+                    $quizData['access_rules'] = $this->quizAccessService->buildAccessRulesObject('live_duel', $user);
+                }
+
+                return $quizData;
             })->values(),
         ]);
     }

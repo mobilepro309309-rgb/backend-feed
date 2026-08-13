@@ -129,6 +129,7 @@ class UserController extends Controller
     protected function serializeUser($user): array
     {
         $address = $user->address;
+        $walletBalance = (float) ($user->wallet?->balance ?? 0);
 
         return [
             'id' => $user->id,
@@ -143,6 +144,10 @@ class UserController extends Controller
             'latitude' => $address?->latitude,
             'longitude' => $address?->longitude,
             'theme_mode' => $user->theme_mode,
+            'wallet' => [
+                'balance' => $walletBalance,
+            ],
+            'wallet_balance' => $walletBalance,
             'geolocation_updated_at' => null,
         ];
     }

@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\{Broadcast, Route};
 use App\Http\Controllers\Api\Users\{UserController, UserProfileController};
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Posts\{CommentController, PostController};
-use App\Http\Controllers\Api\{InteractiveVideoController, LatestQuestionsController, QuizBatchController, UserSelectionController};
+use App\Http\Controllers\Api\{InteractiveVideoController, LatestQuestionsController, QuizBatchController, QuizTransactionController, UserSelectionController};
 use App\Http\Controllers\Api\Admin\{AdminRoleController, TeacherManagementController};
 use App\Http\Controllers\Api\Location\{LocationController, NearbyStudentsController};
 use App\Http\Controllers\Api\Challenges\{CheatSheetController, CloudCapsuleChallengeController, ComparisonChallengeController, DailyChallengeController, FindTheBugChallengeController, LiveDuelChallengeController};
@@ -77,6 +77,11 @@ $apiRoutes = function (): void {
         Route::get('/user/profile', [UserProfileController::class, 'show']);
         Route::put('/user/profile', [UserProfileController::class, 'update']);
         Route::post('/wallet/top-up', [WalletController::class, 'topUp']);
+
+        // Quiz Transaction Routes - Gamified Quiz Progression System (Phase 1)
+        Route::post('/quiz/unlock', [QuizTransactionController::class, 'unlock']);
+        Route::post('/quiz/reward', [QuizTransactionController::class, 'reward']);
+
         Route::get('/profile/{id}/latest-questions', [LatestQuestionsController::class, 'getUserQuestions']);
 
         Route::put('/user/legacy-profile', [UserController::class, 'updateProfile']);

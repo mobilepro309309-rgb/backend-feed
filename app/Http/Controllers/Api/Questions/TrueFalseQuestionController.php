@@ -8,6 +8,7 @@ use App\Models\Message;
 use App\Models\Questions\TrueFalseQuestion;
 use App\Models\User;
 use App\Services\NotificationService;
+use App\Services\QuizAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -15,12 +16,15 @@ class TrueFalseQuestionController extends Controller
 {
     use FiltersQuestionListings;
 
-    public function __construct(protected NotificationService $notificationService)
-    {
+    public function __construct(
+        protected NotificationService $notificationService,
+        protected QuizAccessService $quizAccessService,
+    ) {
     }
 
     public function index(Request $request)
     {
+        $user = $request->user();
         $items = $this->applyQuestionListingFilters(
             TrueFalseQuestion::query()->with('user'),
             $request
@@ -28,8 +32,8 @@ class TrueFalseQuestionController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $items->map(function (TrueFalseQuestion $item): array {
-                return [
+            'data' => $items->map(function (TrueFalseQuestion $item) use ($user): array {
+                $quizData = [
                     'id' => $item->id,
                     'title' => $item->title,
                     'subject' => $item->subject,
@@ -52,6 +56,13 @@ class TrueFalseQuestionController extends Controller
                     'created_at' => $item->created_at,
                     'updated_at' => $item->updated_at,
                 ];
+
+                // Append access_rules for the quiz
+                if ($user) {
+                    $quizData['access_rules'] = $this->quizAccessService->buildAccessRulesObject('true_false', $user);
+                }
+
+                return $quizData;
             })->values(),
         ]);
     }
@@ -96,23 +107,31 @@ class TrueFalseQuestionController extends Controller
             return response()->json(['message' => 'السؤال غير موجود'], 404);
         }
 
+        $user = auth()->user();
+        $quizData = [
+            'id' => $item->id,
+            'title' => $item->title,
+            'subject' => $item->subject,
+            'prompt' => $item->prompt,
+            'question' => $item->prompt,
+            'file_url' => $item->file_url ?? null,
+            'correct_answer' => (bool) $item->correct_answer,
+            'correctAnswer' => (bool) $item->correct_answer,
+            'explanation' => $item->explanation,
+            'badge_text' => $item->badge_text,
+            'quizType' => 'true_false',
+            'questionType' => 'true_false',
+            'type' => 'true_false',
+        ];
+
+        // Append access_rules if user is authenticated
+        if ($user) {
+            $quizData['access_rules'] = $this->quizAccessService->buildAccessRulesObject('true_false', $user);
+        }
+
         return response()->json([
             'status' => 'success',
-            'data' => [
-                'id' => $item->id,
-                'title' => $item->title,
-                'subject' => $item->subject,
-                'prompt' => $item->prompt,
-                'question' => $item->prompt,
-                'file_url' => $item->file_url ?? null,
-                'correct_answer' => (bool) $item->correct_answer,
-                'correctAnswer' => (bool) $item->correct_answer,
-                'explanation' => $item->explanation,
-                'badge_text' => $item->badge_text,
-                'quizType' => 'true_false',
-                'questionType' => 'true_false',
-                'type' => 'true_false',
-            ],
+            'data' => $quizData,
         ]);
     }
 

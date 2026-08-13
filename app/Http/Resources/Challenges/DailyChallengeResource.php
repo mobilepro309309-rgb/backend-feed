@@ -11,6 +11,8 @@ class DailyChallengeResource extends JsonResource
 {
     public function toArray($request): array
     {
+        $quizAccessService = app(\App\Services\QuizAccessService::class);
+
         return [
             'id' => $this->id,
             'user_id' => $this->user_id,
@@ -28,6 +30,7 @@ class DailyChallengeResource extends JsonResource
             'status' => $this->status,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
+            'access_rules' => $quizAccessService->buildAccessRulesObject('daily_challenge', $request->user()),
         ];
     }
 }

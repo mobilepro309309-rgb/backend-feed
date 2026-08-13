@@ -10,17 +10,22 @@ use App\Models\Message;
 use App\Models\Questions\MultipleChoiceQuestion;
 use App\Models\User;
 use App\Services\NotificationService;
+use App\Services\QuizAccessService;
+use Illuminate\Support\Facades\Log;
 
 class MultipleChoiceQuestionController extends Controller
 {
     use FiltersQuestionListings;
 
-    public function __construct(protected NotificationService $notificationService)
-    {
+    public function __construct(
+        protected NotificationService $notificationService,
+        protected QuizAccessService $quizAccessService,
+    ) {
     }
 
     public function index(Request $request)
     {
+        $user = $request->user();
         $items = $this->applyQuestionListingFilters(
             MultipleChoiceQuestion::query()->with('user'),
             $request
@@ -28,12 +33,12 @@ class MultipleChoiceQuestionController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $items->map(function (MultipleChoiceQuestion $item): array {
+            'data' => $items->map(function (MultipleChoiceQuestion $item) use ($user): array {
                 $options = collect($item->options ?? [])->map(function ($opt): array {
                     return ['label' => (string) $opt, 'value' => (string) $opt];
                 })->values()->all();
 
-                return [
+                $quizData = [
                     'id' => $item->id,
                     'title' => $item->title,
                     'subject' => $item->subject,
@@ -59,6 +64,13 @@ class MultipleChoiceQuestionController extends Controller
                     'created_at' => $item->created_at,
                     'updated_at' => $item->updated_at,
                 ];
+
+                // Append access_rules for the quiz
+                if ($user) {
+                    $quizData['access_rules'] = $this->quizAccessService->buildAccessRulesObject('multiple_choice', $user);
+                }
+
+                return $quizData;
             })->values(),
         ]);
     }
@@ -107,25 +119,33 @@ class MultipleChoiceQuestionController extends Controller
             return ['label' => (string) $opt, 'value' => (string) $opt];
         })->values()->all();
 
+        $user = auth()->user();
+        $quizData = [
+            'id' => $item->id,
+            'title' => $item->title,
+            'subject' => $item->subject,
+            'question' => $item->question,
+            'prompt' => $item->question,
+            'options' => $options,
+            'choices' => $options,
+            'correct_index' => (int) ($item->correct_index ?? 0),
+            'correct_answer_index' => (int) ($item->correct_index ?? 0),
+            'correctIndex' => (int) ($item->correct_index ?? 0),
+            'badge_text' => $item->badge_text,
+            'file_url' => $item->file_url ?? null,
+            'quizType' => 'multiple_choice',
+            'questionType' => 'multiple_choice',
+            'type' => 'multiple_choice',
+        ];
+
+        // Append access_rules if user is authenticated
+        if ($user) {
+            $quizData['access_rules'] = $this->quizAccessService->buildAccessRulesObject('multiple_choice', $user);
+        }
+
         return response()->json([
             'status' => 'success',
-            'data' => [
-                'id' => $item->id,
-                'title' => $item->title,
-                'subject' => $item->subject,
-                'question' => $item->question,
-                'prompt' => $item->question,
-                'options' => $options,
-                'choices' => $options,
-                'correct_index' => (int) ($item->correct_index ?? 0),
-                'correct_answer_index' => (int) ($item->correct_index ?? 0),
-                'correctIndex' => (int) ($item->correct_index ?? 0),
-                'badge_text' => $item->badge_text,
-                'file_url' => $item->file_url ?? null,
-                'quizType' => 'multiple_choice',
-                'questionType' => 'multiple_choice',
-                'type' => 'multiple_choice',
-            ],
+            'data' => $quizData,
         ]);
     }
 

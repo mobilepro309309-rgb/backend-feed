@@ -8,6 +8,7 @@ use App\Models\Challenges\FindTheBugChallenge;
 use App\Models\Message;
 use App\Models\User;
 use App\Services\NotificationService;
+use App\Services\QuizAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -15,12 +16,15 @@ class FindTheBugChallengeController extends Controller
 {
     use FiltersQuestionListings;
 
-    public function __construct(protected NotificationService $notificationService)
-    {
+    public function __construct(
+        protected NotificationService $notificationService,
+        protected QuizAccessService $quizAccessService,
+    ) {
     }
 
     public function index(Request $request)
     {
+        $user = $request->user();
         $items = $this->applyQuestionListingFilters(
             FindTheBugChallenge::query()->with('user'),
             $request
@@ -28,12 +32,12 @@ class FindTheBugChallengeController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $items->map(function (FindTheBugChallenge $item): array {
+            'data' => $items->map(function (FindTheBugChallenge $item) use ($user): array {
                 $options = collect($item->options ?? [])->map(function ($opt): array {
                     return ['label' => (string) $opt, 'value' => (string) $opt];
                 })->values()->all();
 
-                return [
+                $quizData = [
                     'id' => $item->id,
                     'title' => $item->title,
                     'subject' => $item->subject,
@@ -59,6 +63,13 @@ class FindTheBugChallengeController extends Controller
                     'created_at' => $item->created_at,
                     'updated_at' => $item->updated_at,
                 ];
+
+                // Append access_rules for the quiz
+                if ($user) {
+                    $quizData['access_rules'] = $this->quizAccessService->buildAccessRulesObject('find_the_bug', $user);
+                }
+
+                return $quizData;
             })->values(),
         ]);
     }

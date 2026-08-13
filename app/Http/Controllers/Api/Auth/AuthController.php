@@ -185,8 +185,14 @@ class AuthController extends Controller
 
     public function me(Request $request)
     {
+        $user = $request->user();
+
         return response()->json([
-            'user' => $this->serializeUser($request->user()),
+            'user' => $this->serializeUser($user),
+            'wallet' => [
+                'balance' => (float) ($user->wallet?->balance ?? 0),
+            ],
+            'wallet_balance' => (float) ($user->wallet?->balance ?? 0),
         ]);
     }
 
@@ -280,6 +286,7 @@ class AuthController extends Controller
     {
         $profile = $user->profile()->first();
         $avatarUrl = $profile?->avatar_url ?? $profile?->avatar ?? null;
+        $walletBalance = (float) ($user->wallet?->balance ?? 0);
 
         return [
             'id' => $user->id,
@@ -294,6 +301,10 @@ class AuthController extends Controller
             'avatar' => $avatarUrl,
             'profile_image' => $avatarUrl,
             'imageUrl' => $avatarUrl,
+            'wallet' => [
+                'balance' => $walletBalance,
+            ],
+            'wallet_balance' => $walletBalance,
         ];
     }
 
