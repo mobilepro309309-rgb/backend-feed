@@ -7,6 +7,7 @@ namespace App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 use App\Http\Resources\Challenges\{CloudCapsuleChallengeResource, ComparisonChallengeResource, DailyChallengeResource, FindTheBugChallengeResource, LiveDuelChallengeResource};
 use App\Http\Resources\Posts\PostResource;
@@ -22,23 +23,54 @@ class FeedResource extends JsonResource
             return null;
         }
 
-        if (method_exists($feedable, 'explanation')) {
-            $feedable->loadMissing('explanation');
-
-            return $feedable->explanation?->video_url ?? null;
-        }
-
         $questionId = $feedable->getKey();
         if ($questionId === null) {
             return null;
         }
 
+        if (method_exists($feedable, 'explanation')) {
+            $feedable->loadMissing('explanation');
+
+            if ($feedable->relationLoaded('explanation') && $feedable->explanation) {
+                return $feedable->explanation->video_url ?? null;
+            }
+        }
+
+        $className = $feedable::class;
+        $candidateTypes = [];
+
+        foreach ([
+            $className,
+            ltrim($className, '\\'),
+            Str::after($className, '\\'),
+            class_basename($className),
+        ] as $candidateType) {
+            if (is_string($candidateType) && $candidateType !== '') {
+                $candidateTypes[] = $candidateType;
+            }
+        }
+
+        $candidateTypes = array_values(array_unique($candidateTypes));
+
         $explanation = \App\Models\QuestionExplanation::query()
-            ->where('question_type', $feedable::class)
+            ->where(function ($query) use ($candidateTypes) {
+                foreach ($candidateTypes as $candidateType) {
+                    $query->orWhere('question_type', $candidateType);
+                }
+            })
             ->where('question_id', $questionId)
+            ->orderByDesc('id')
             ->first();
 
-        return $explanation?->video_url ?? null;
+        if ($explanation) {
+            return $explanation->video_url ?? null;
+        }
+
+        if (method_exists($feedable, 'explanation')) {
+            return $feedable->explanation?->video_url ?? null;
+        }
+
+        return null;
     }
 
     public function toArray($request): array
@@ -52,7 +84,7 @@ class FeedResource extends JsonResource
             }
         }
 
-        $details = $feedable ? match (get_class($feedable)) {
+        $detailsResource = $feedable ? match (get_class($feedable)) {
             \App\Models\Posts\Post::class => new PostResource($feedable),
             \App\Models\Questions\MultipleChoiceQuestion::class => new McqQuestionResource($feedable),
             \App\Models\Questions\TrueFalseQuestion::class => new TrueFalseQuestionResource($feedable),
@@ -63,6 +95,12 @@ class FeedResource extends JsonResource
             \App\Models\Challenges\DailyChallenge::class => new DailyChallengeResource($feedable),
             default => null,
         } : null;
+
+        // Convert resource to array so we can inject explanation_video_url universally
+        $details = null;
+        if ($detailsResource) {
+            $details = $detailsResource->toArray($request);
+        }
 
         if (is_array($details) && $feedable) {
             $details['explanation_video_url'] = $this->resolveExplanationVideoUrl($feedable);

@@ -54,6 +54,7 @@ class DailyChallengeController extends Controller
                     'status' => $item->status ?? 'draft',
                     'badge_text' => $item->badge_text,
                     'file_url' => $item->file_url ?? null,
+                    'explanation_video_url' => $item->explanation?->video_url ?? null,
                     'prompt' => $item->prompt,
                     'question' => $item->prompt,
                     'description' => $item->prompt,
@@ -126,7 +127,7 @@ class DailyChallengeController extends Controller
     public function show(string $id)
     {
         $resolvedQuizId = $this->resolveQuizId($id);
-        $item = $resolvedQuizId ? DailyChallenge::find($resolvedQuizId) : null;
+        $item = $resolvedQuizId ? DailyChallenge::with('explanation')->find($resolvedQuizId) : null;
 
         if (! $item) {
             return response()->json(['message' => 'التحدي اليومي غير موجود'], 404);
@@ -158,6 +159,7 @@ class DailyChallengeController extends Controller
                 'correct_index' => is_numeric($correctIndex) ? (int) $correctIndex : null,
                 'badge_text' => $item->badge_text,
                 'file_url' => $item->file_url ?? null,
+                'explanation_video_url' => $item->explanation?->video_url ?? null,
                 'reward_text' => $item->reward_text,
                 'quizType' => 'daily_challenge',
                 'questionType' => 'daily_challenge',
@@ -197,6 +199,7 @@ class DailyChallengeController extends Controller
             'correct_answer_index' => ['required', 'integer', 'min:0', 'max:3'],
             'badge_text' => ['nullable', 'string', 'max:120'],
             'file_url' => ['nullable', 'string', 'max:2048'],
+            'explanation_video_url' => ['nullable', 'string', 'max:2048'],
             'reward_text' => ['nullable', 'string', 'max:180'],
             'expires_in_hours' => ['nullable', 'integer', 'min:1', 'max:720'],
             'status' => ['nullable', 'in:draft,published'],
@@ -233,6 +236,8 @@ class DailyChallengeController extends Controller
             'status' => $validated['status'] ?? 'draft',
             'published_at' => ($validated['status'] ?? 'draft') === 'published' ? now() : null,
         ]);
+
+        QuestionExplanation::upsertForQuestion($challenge, $request->input('explanation_video_url'), $user->id);
 
         try {
             $challengeGrade = (string) ($challenge->school_grade ?? '');

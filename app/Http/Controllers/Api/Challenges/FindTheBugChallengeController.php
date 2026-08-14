@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use App\Http\Controllers\Controller;
 use App\Models\Challenges\FindTheBugChallenge;
 use App\Models\Message;
+use App\Models\QuestionExplanation;
 use App\Models\User;
 use App\Services\NotificationService;
 use App\Services\QuizAccessService;
@@ -45,6 +46,7 @@ class FindTheBugChallengeController extends Controller
                     'status' => $item->status ?? 'draft',
                     'badge_text' => $item->badge_text,
                     'file_url' => $item->file_url ?? null,
+                    'explanation_video_url' => $item->explanation?->video_url ?? null,
                     'prompt' => $item->prompt,
                     'question' => $item->prompt,
                     'description' => $item->prompt,
@@ -108,7 +110,7 @@ class FindTheBugChallengeController extends Controller
     public function show(string $id)
     {
         $resolvedQuizId = $this->resolveQuizId($id);
-        $item = $resolvedQuizId ? FindTheBugChallenge::find($resolvedQuizId) : null;
+        $item = $resolvedQuizId ? FindTheBugChallenge::with('explanation')->find($resolvedQuizId) : null;
 
         if (! $item) {
             return response()->json(['message' => 'سؤال اكتشاف الخطأ غير موجود'], 404);
@@ -133,6 +135,7 @@ class FindTheBugChallengeController extends Controller
                 'correct_index' => (int) ($item->correct_answer_index ?? 0),
                 'badge_text' => $item->badge_text,
                 'file_url' => $item->file_url ?? null,
+                'explanation_video_url' => $item->explanation?->video_url ?? null,
                 'quizType' => 'find_the_bug',
                 'questionType' => 'find_the_bug',
                 'type' => 'find_the_bug',
@@ -171,6 +174,7 @@ class FindTheBugChallengeController extends Controller
             'correct_answer_index' => ['required', 'integer', 'min:0', 'max:3'],
             'badge_text' => ['nullable', 'string', 'max:120'],
             'file_url' => ['nullable', 'string', 'max:2048'],
+            'explanation_video_url' => ['nullable', 'string', 'max:2048'],
             'status' => ['nullable', 'in:draft,published'],
         ]);
 
@@ -203,6 +207,8 @@ class FindTheBugChallengeController extends Controller
             'status' => $validated['status'] ?? 'draft',
             'published_at' => ($validated['status'] ?? 'draft') === 'published' ? now() : null,
         ]);
+
+        QuestionExplanation::upsertForQuestion($challenge, $request->input('explanation_video_url'), $user->id);
 
         try {
             $challengeGrade = (string) ($challenge->school_grade ?? '');

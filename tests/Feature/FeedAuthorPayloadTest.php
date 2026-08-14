@@ -75,4 +75,58 @@ class FeedAuthorPayloadTest extends TestCase
         $response->assertJsonMissing(['content' => 'different grade post']);
         $response->assertJsonFragment(['content' => 'same grade post']);
     }
+
+    public function test_feed_injects_explanation_video_url_for_question_and_challenge_models(): void
+    {
+        $teacher = User::factory()->create([
+            'role' => 'question_post_admin',
+            'name' => 'Teacher One',
+        ]);
+
+        $trueFalseQuestion = \App\Models\Questions\TrueFalseQuestion::create([
+            'user_id' => $teacher->id,
+            'title' => 'True false explanatory video',
+            'subject' => 'علوم',
+            'school_grade' => '1',
+            'term' => '1',
+            'prompt' => 'The sky is blue.',
+            'correct_answer' => true,
+            'badge_text' => 'صح أم خطأ',
+            'status' => 'published',
+        ]);
+
+        \App\Models\QuestionExplanation::create([
+            'question_type' => \App\Models\Questions\TrueFalseQuestion::class,
+            'question_id' => $trueFalseQuestion->id,
+            'video_url' => 'https://example.com/true-false.mp4',
+            'teacher_id' => $teacher->id,
+        ]);
+
+        $comparisonChallenge = \App\Models\Challenges\ComparisonChallenge::create([
+            'user_id' => $teacher->id,
+            'title' => 'Comparison explanatory video',
+            'subject' => 'علوم',
+            'school_grade' => '1',
+            'term' => '1',
+            'left_label' => 'اليسار',
+            'right_label' => 'اليمين',
+            'left_text' => 'A',
+            'right_text' => 'B',
+            'badge_text' => 'مقارنة',
+            'status' => 'published',
+        ]);
+
+        \App\Models\QuestionExplanation::create([
+            'question_type' => \App\Models\Challenges\ComparisonChallenge::class,
+            'question_id' => $comparisonChallenge->id,
+            'video_url' => 'https://example.com/comparison.mp4',
+            'teacher_id' => $teacher->id,
+        ]);
+
+        $response = $this->getJson('/api/feed');
+
+        $response->assertOk()
+            ->assertJsonFragment(['explanation_video_url' => 'https://example.com/true-false.mp4'])
+            ->assertJsonFragment(['explanation_video_url' => 'https://example.com/comparison.mp4']);
+    }
 }

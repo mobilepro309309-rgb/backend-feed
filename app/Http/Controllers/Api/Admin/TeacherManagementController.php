@@ -399,6 +399,7 @@ class TeacherManagementController extends Controller
                 'reward_text' => ['nullable', 'string', 'max:180'],
                 'expires_in_hours' => ['nullable', 'integer', 'min:1', 'max:720'],
                 'file_url' => ['nullable', 'string', 'max:2048'],
+                'explanation_video_url' => ['nullable', 'string', 'max:2048'],
                 'status' => ['nullable', 'in:draft,published'],
             ],
             'comparison' => [
@@ -413,6 +414,7 @@ class TeacherManagementController extends Controller
                 'explanation' => ['nullable', 'string'],
                 'badge_text' => ['nullable', 'string', 'max:120'],
                 'file_url' => ['nullable', 'string', 'max:2048'],
+                'explanation_video_url' => ['nullable', 'string', 'max:2048'],
                 'status' => ['nullable', 'in:draft,published'],
             ],
             'find_the_bug' => [
@@ -426,6 +428,7 @@ class TeacherManagementController extends Controller
                 'correct_answer_index' => ['required', 'integer', 'min:0', 'max:3'],
                 'badge_text' => ['nullable', 'string', 'max:120'],
                 'file_url' => ['nullable', 'string', 'max:2048'],
+                'explanation_video_url' => ['nullable', 'string', 'max:2048'],
                 'status' => ['nullable', 'in:draft,published'],
             ],
             'cloud_capsule' => [
@@ -441,6 +444,7 @@ class TeacherManagementController extends Controller
                 'icon' => ['nullable', 'string', 'max:50'],
                 'badge_text' => ['nullable', 'string', 'max:120'],
                 'file_url' => ['nullable', 'string', 'max:2048'],
+                'explanation_video_url' => ['nullable', 'string', 'max:2048'],
                 'status' => ['nullable', 'in:draft,published'],
             ],
             'live_duel' => [
@@ -451,6 +455,7 @@ class TeacherManagementController extends Controller
                 'challenge_text' => ['nullable', 'string'],
                 'badge_text' => ['nullable', 'string', 'max:80'],
                 'file_url' => ['nullable', 'string', 'max:2048'],
+                'explanation_video_url' => ['nullable', 'string', 'max:2048'],
                 'question_count' => ['required', 'integer', 'min:1', 'max:20'],
                 'seconds_per_question' => ['required', 'integer', 'min:5', 'max:120'],
                 'questions' => ['required', 'array', 'min:1'],

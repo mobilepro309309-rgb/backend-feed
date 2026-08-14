@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace App\Models\Challenges;
 
 use App\Models\Feed;
+use App\Models\QuestionExplanation;
 use App\Models\User;
 use App\Traits\SyncsToFeed;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 
 class LiveDuelChallenge extends Model
 {
@@ -57,6 +59,11 @@ class LiveDuelChallenge extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function explanation(): MorphOne
+    {
+        return $this->morphOne(QuestionExplanation::class, 'question');
     }
 
     public function feeds(): MorphMany

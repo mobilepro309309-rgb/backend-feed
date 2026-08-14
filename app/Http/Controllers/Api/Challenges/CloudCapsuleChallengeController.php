@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Challenges;
 use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use App\Http\Controllers\Controller;
 use App\Models\Challenges\CloudCapsuleChallenge;
+use App\Models\QuestionExplanation;
 use App\Models\User;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
@@ -21,7 +22,7 @@ class CloudCapsuleChallengeController extends Controller
     public function index(Request $request)
     {
         $items = $this->applyQuestionListingFilters(
-            CloudCapsuleChallenge::query()->with('user'),
+            CloudCapsuleChallenge::query()->with(['user', 'explanation']),
             $request
         )->latest('created_at')->get();
 
@@ -38,6 +39,7 @@ class CloudCapsuleChallengeController extends Controller
                     'status' => $item->status ?? 'draft',
                     'badge_text' => $item->badge_text,
                     'file_url' => $item->file_url ?? null,
+                    'explanation_video_url' => $item->explanation?->video_url ?? null,
                     'prompt' => $prompt,
                     'question' => $item->reveal_text,
                     'description' => $prompt ?: $item->reveal_text,
@@ -88,6 +90,7 @@ class CloudCapsuleChallengeController extends Controller
             'term' => ['nullable', 'in:1,2'],
             'intro_text' => ['nullable', 'string'],
             'file_url' => ['nullable', 'string', 'max:2048'],
+            'explanation_video_url' => ['nullable', 'string', 'max:2048'],
             'badge_text' => ['nullable', 'string', 'max:120'],
             'reveal_text' => ['required', 'string'],
             'tip_text' => ['nullable', 'string'],
@@ -117,6 +120,8 @@ class CloudCapsuleChallengeController extends Controller
         $challenge->status = $validated['status'] ?? 'draft';
         $challenge->published_at = ($validated['status'] ?? 'draft') === 'published' ? now() : null;
         $challenge->save();
+
+        QuestionExplanation::upsertForQuestion($challenge, $request->input('explanation_video_url'), $user->id);
 
         try {
             $capsuleGrade = (string) ($challenge->school_grade ?? '');

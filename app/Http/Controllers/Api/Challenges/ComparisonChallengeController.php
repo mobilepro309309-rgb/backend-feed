@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use App\Http\Controllers\Controller;
 use App\Models\Challenges\ComparisonChallenge;
 use App\Models\Message;
+use App\Models\QuestionExplanation;
 use App\Models\User;
 use App\Services\NotificationService;
 use App\Services\QuizAccessService;
@@ -43,6 +44,7 @@ class ComparisonChallengeController extends Controller
                     'status' => $item->status ?? 'draft',
                     'badge_text' => $item->badge_text,
                     'file_url' => $item->file_url ?? null,
+                    'explanation_video_url' => $item->explanation?->video_url ?? null,
                     'prompt' => $prompt,
                     'question' => $prompt,
                     'description' => $item->explanation ?: $prompt,
@@ -106,7 +108,7 @@ class ComparisonChallengeController extends Controller
     public function show(string $id)
     {
         $resolvedQuizId = $this->resolveQuizId($id);
-        $item = $resolvedQuizId ? ComparisonChallenge::find($resolvedQuizId) : null;
+        $item = $resolvedQuizId ? ComparisonChallenge::with('explanation')->find($resolvedQuizId) : null;
 
         if (! $item) {
             return response()->json(['message' => 'المقارنة غير موجودة'], 404);
@@ -127,6 +129,7 @@ class ComparisonChallengeController extends Controller
                 'explanation' => $item->explanation,
                 'badge_text' => $item->badge_text,
                 'file_url' => $item->file_url ?? null,
+                'explanation_video_url' => $item->explanation?->video_url ?? null,
                 'quizType' => 'comparison_card',
                 'questionType' => 'comparison_card',
                 'type' => 'comparison_card',
@@ -164,6 +167,7 @@ class ComparisonChallengeController extends Controller
             'left_text' => ['required', 'string'],
             'right_text' => ['required', 'string'],
             'file_url' => ['nullable', 'string', 'max:2048'],
+            'explanation_video_url' => ['nullable', 'string', 'max:2048'],
             'explanation' => ['nullable', 'string'],
             'badge_text' => ['nullable', 'string', 'max:120'],
             'status' => ['nullable', 'in:draft,published'],
@@ -188,6 +192,8 @@ class ComparisonChallengeController extends Controller
             'status' => $validated['status'] ?? 'draft',
             'published_at' => ($validated['status'] ?? 'draft') === 'published' ? now() : null,
         ]);
+
+        QuestionExplanation::upsertForQuestion($challenge, $request->input('explanation_video_url'), $user->id);
 
         try {
             $comparisonGrade = (string) ($challenge->school_grade ?? '');

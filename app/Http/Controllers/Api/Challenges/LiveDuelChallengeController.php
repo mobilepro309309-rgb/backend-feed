@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use App\Http\Controllers\Controller;
 use App\Events\{DuelInvitedEvent, DuelJoinedEvent};
 use App\Models\Challenges\{DuelParticipant, DuelRoom, LiveDuelChallenge};
+use App\Models\QuestionExplanation;
 use App\Models\User;
 use App\Services\NotificationService;
 use App\Services\QuizAccessService;
@@ -27,7 +28,7 @@ class LiveDuelChallengeController extends Controller
     {
         $user = $request->user();
         $items = $this->applyQuestionListingFilters(
-            LiveDuelChallenge::query()->with('user'),
+            LiveDuelChallenge::query()->with(['user', 'explanation']),
             $request
         )->latest('created_at')->get();
 
@@ -45,6 +46,7 @@ class LiveDuelChallengeController extends Controller
                     'status' => $item->status ?? 'draft',
                     'badge_text' => $item->badge_text,
                     'file_url' => $item->file_url ?? null,
+                    'explanation_video_url' => $item->explanation?->video_url ?? null,
                     'prompt' => $item->challenge_text,
                     'question' => $item->challenge_text,
                     'description' => $item->challenge_text,
@@ -332,6 +334,7 @@ class LiveDuelChallengeController extends Controller
             'challenge_text' => ['nullable', 'string'],
             'badge_text' => ['nullable', 'string', 'max:80'],
             'file_url' => ['nullable', 'string', 'max:2048'],
+            'explanation_video_url' => ['nullable', 'string', 'max:2048'],
             'question_count' => ['required', 'integer', 'min:1', 'max:20'],
             'seconds_per_question' => ['required', 'integer', 'min:5', 'max:120'],
             'questions' => ['required', 'array', 'min:1'],
@@ -384,6 +387,8 @@ class LiveDuelChallengeController extends Controller
             'status' => $validated['status'] ?? 'draft',
             'published_at' => ($validated['status'] ?? 'draft') === 'published' ? now() : null,
         ]);
+
+        QuestionExplanation::upsertForQuestion($challenge, $request->input('explanation_video_url'), $user->id);
 
         return response()->json([
             'message' => 'تم حفظ التحدي بنجاح',
