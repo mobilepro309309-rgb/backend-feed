@@ -18,6 +18,7 @@ use App\Models\TeacherScope;
 use App\Models\Wallet;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
@@ -161,6 +162,11 @@ class User extends Authenticatable
     public function trueFalseQuestions()
     {
         return $this->hasMany(TrueFalseQuestion::class);
+    }
+
+    public function questionExplanations(): HasMany
+    {
+        return $this->hasMany(QuestionExplanation::class, 'teacher_id');
     }
 
     public function devices(): HasMany

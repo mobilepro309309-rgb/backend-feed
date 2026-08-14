@@ -17,6 +17,7 @@ class TrueFalseQuestionResource extends JsonResource
             'id' => $this->id,
             'user_id' => $this->user_id,
             'file_url' => $this->file_url ?? null,
+            'explanation_video_url' => $this->explanation?->video_url ?? null,
             'title' => $this->title,
             'subject' => $this->subject,
             'statement' => $this->prompt,

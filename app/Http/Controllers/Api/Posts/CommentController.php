@@ -12,6 +12,53 @@ use Illuminate\Http\Request;
 
 class CommentController extends Controller
 {
+    private function rejectVideoUploadForRegularUsers(Request $request, array $validated = []): ?\Illuminate\Http\JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user || mb_strtolower(trim((string) ($user->role ?? ''))) !== 'user') {
+            return null;
+        }
+
+        $candidates = [
+            $validated['file_url'] ?? null,
+            $validated['type'] ?? null,
+            $validated['metadata']['type'] ?? null,
+            $validated['metadata']['mime_type'] ?? null,
+        ];
+
+        foreach ($candidates as $candidate) {
+            if ($this->looksLikeVideoMedia((string) ($candidate ?? ''))) {
+                return response()->json([
+                    'message' => 'رفع الفيديوهات متاح فقط للمعلمين والمشرفين',
+                ], 403);
+            }
+        }
+
+        return null;
+    }
+
+    private function looksLikeVideoMedia(string $value): bool
+    {
+        $normalized = strtolower(trim($value));
+
+        if ($normalized === '') {
+            return false;
+        }
+
+        if (str_contains($normalized, 'video/')) {
+            return true;
+        }
+
+        foreach (['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', '3gp', 'mpeg', 'mpg', 'wmv'] as $extension) {
+            if (str_ends_with($normalized, '.' . $extension) || str_contains($normalized, '.' . $extension) || str_contains($normalized, $extension)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * Fetch all top-level comments for a specific post
      * GET /api/posts/{post}/comments
@@ -30,12 +77,12 @@ class CommentController extends Controller
         $comments = $post->comments()
             ->with([
                 'user' => function ($query) {
-                    $query->select('id', 'name');
+                    $query->select('id', 'name', 'role');
                 },
                 'replies' => function ($query) {
                     $query->with([
                         'user' => function ($userQuery) {
-                            $userQuery->select('id', 'name');
+                            $userQuery->select('id', 'name', 'role');
                         },
                     ])->orderByDesc('created_at');
                 },
@@ -76,10 +123,15 @@ class CommentController extends Controller
         $validated = $request->validate([
             'content' => ['nullable', 'string', 'max:5000'],
             'parent_id' => ['nullable', 'exists:post_comments,id'],
-            'type' => ['nullable', 'in:text,image,voice,gif'],
+            'type' => ['nullable', 'in:text,image,voice,gif,video,file'],
             'metadata' => ['nullable', 'array'],
             'file_url' => ['nullable', 'url'],
         ]);
+
+        $videoRestrictionResponse = $this->rejectVideoUploadForRegularUsers($request, $validated);
+        if ($videoRestrictionResponse) {
+            return $videoRestrictionResponse;
+        }
 
         // Ensure at least one of content or file_url is present
         $hasContent = isset($validated['content']) && trim((string)$validated['content']) !== '';
@@ -142,12 +194,12 @@ class CommentController extends Controller
         // Reload with relationships
         $comment->load([
             'user' => function ($query) {
-                $query->select('id', 'name');
+                $query->select('id', 'name', 'role');
             },
             'replies' => function ($query) {
                 $query->with([
                     'user' => function ($userQuery) {
-                        $userQuery->select('id', 'name');
+                        $userQuery->select('id', 'name', 'role');
                     },
                 ])->orderByDesc('created_at');
             },
@@ -255,6 +307,7 @@ class CommentController extends Controller
             'user' => $comment->user ? [
                 'id' => $comment->user->id,
                 'name' => $comment->user->name,
+                'role' => $comment->user->role,
             ] : null,
             'replies' => $comment->replies ? $comment->replies->map(fn ($reply) => $this->formatCommentForResponse($reply))->toArray() : [],
             'replies_count' => $comment->replies()->count(),

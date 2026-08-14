@@ -6,9 +6,9 @@ namespace App\Models\Questions;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\{BelongsTo, MorphMany};
+use Illuminate\Database\Eloquent\Relations\{BelongsTo, MorphMany, MorphOne};
 
-use App\Models\{Feed, User};
+use App\Models\{Feed, QuestionExplanation, User};
 use App\Traits\SyncsToFeed;
 
 class MultipleChoiceQuestion extends Model
@@ -59,5 +59,10 @@ class MultipleChoiceQuestion extends Model
     public function feeds(): MorphMany
     {
         return $this->morphMany(Feed::class, 'feedable');
+    }
+
+    public function explanation(): MorphOne
+    {
+        return $this->morphOne(QuestionExplanation::class, 'question');
     }
 }

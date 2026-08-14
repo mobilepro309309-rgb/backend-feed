@@ -68,7 +68,7 @@ class FeedService
 
         $query = Feed::query()
             ->with(['feedable' => function ($query) {
-                $query->with('user');
+                $query->with(['user']);
             }]);
 
         if (!$user->isAdmin()) {
@@ -96,10 +96,35 @@ class FeedService
             }
         }
 
-        return $query
+        $feed = $query
             ->orderByDesc('is_pinned')
             ->orderByDesc('created_at')
             ->paginate($perPage);
+
+        foreach ($feed as $feedItem) {
+            $feedable = $feedItem->feedable;
+
+            if (! $feedable) {
+                continue;
+            }
+
+            if (method_exists($feedable, 'user')) {
+                $feedable->loadMissing('user');
+            }
+
+            if (method_exists($feedable, 'explanation')) {
+                $feedable->loadMissing('explanation');
+            }
+
+            if (in_array($feedable::class, [
+                \App\Models\Questions\MultipleChoiceQuestion::class,
+                \App\Models\Questions\TrueFalseQuestion::class,
+            ], true)) {
+                $feedable->loadMissing('explanation');
+            }
+        }
+
+        return $feed;
     }
 
     protected function normalizeGrade(?string $grade): ?string

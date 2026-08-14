@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 
 use App\Http\Controllers\Controller;
 use App\Models\Message;
+use App\Models\QuestionExplanation;
 use App\Models\Questions\MultipleChoiceQuestion;
 use App\Models\User;
 use App\Services\NotificationService;
@@ -27,7 +28,7 @@ class MultipleChoiceQuestionController extends Controller
     {
         $user = $request->user();
         $items = $this->applyQuestionListingFilters(
-            MultipleChoiceQuestion::query()->with('user'),
+            MultipleChoiceQuestion::query()->with(['user', 'explanation']),
             $request
         )->latest('created_at')->get();
 
@@ -46,6 +47,7 @@ class MultipleChoiceQuestionController extends Controller
                     'status' => $item->status ?? 'draft',
                     'badge_text' => $item->badge_text,
                     'file_url' => $item->file_url ?? null,
+                    'explanation_video_url' => $item->explanation?->video_url ?? null,
                     'prompt' => $item->question,
                     'question' => $item->question,
                     'description' => $item->question,
@@ -109,7 +111,7 @@ class MultipleChoiceQuestionController extends Controller
     public function show(string $id)
     {
         $resolvedQuizId = $this->resolveQuizId($id);
-        $item = $resolvedQuizId ? MultipleChoiceQuestion::find($resolvedQuizId) : null;
+        $item = $resolvedQuizId ? MultipleChoiceQuestion::with('explanation')->find($resolvedQuizId) : null;
 
         if (! $item) {
             return response()->json(['message' => 'السؤال غير موجود'], 404);
@@ -133,6 +135,7 @@ class MultipleChoiceQuestionController extends Controller
             'correctIndex' => (int) ($item->correct_index ?? 0),
             'badge_text' => $item->badge_text,
             'file_url' => $item->file_url ?? null,
+            'explanation_video_url' => $item->explanation?->video_url ?? null,
             'quizType' => 'multiple_choice',
             'questionType' => 'multiple_choice',
             'type' => 'multiple_choice',
@@ -180,6 +183,7 @@ class MultipleChoiceQuestionController extends Controller
             'correct_index' => ['required', 'integer', 'min:0', 'max:3'],
             'badge_text' => ['nullable', 'string', 'max:120'],
             'file_url' => ['nullable', 'string', 'max:2048'],
+            'explanation_video_url' => ['nullable', 'string', 'max:2048'],
             'status' => ['nullable', 'in:draft,published'],
         ]);
 
@@ -212,6 +216,12 @@ class MultipleChoiceQuestionController extends Controller
             'status' => $validated['status'] ?? 'draft',
             'published_at' => ($validated['status'] ?? 'draft') === 'published' ? now() : null,
         ]);
+
+        QuestionExplanation::upsertForQuestion(
+            $question,
+            $request->input('explanation_video_url'),
+            $user->id
+        );
 
         try {
             $questionGrade = (string) ($question->school_grade ?? '');

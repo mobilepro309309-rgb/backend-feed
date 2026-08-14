@@ -12,6 +12,67 @@ use App\Services\NotificationService;
 
 class ChatController extends Controller
 {
+    protected function rejectVideoUploadForRegularUsers(Request $request, array $validated = []): ?\Illuminate\Http\JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user || mb_strtolower(trim((string) ($user->role ?? ''))) !== 'user') {
+            return null;
+        }
+
+        $candidates = [
+            $validated['file_url'] ?? null,
+            $validated['file_type'] ?? null,
+            $validated['message_type'] ?? null,
+            $validated['shared_content_type'] ?? null,
+            $validated['type'] ?? null,
+            $request->input('file_url'),
+            $request->input('file_type'),
+            $request->input('message_type'),
+            $request->input('shared_content_type'),
+            $request->input('type'),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if ($this->looksLikeVideoMedia((string) ($candidate ?? ''))) {
+                return response()->json([
+                    'message' => 'رفع الفيديوهات متاح فقط للمعلمين والمشرفين',
+                ], 403);
+            }
+        }
+
+        foreach ($request->allFiles() as $file) {
+            if ($file instanceof \Illuminate\Http\UploadedFile && $this->looksLikeVideoMedia((string) $file->getMimeType())) {
+                return response()->json([
+                    'message' => 'رفع الفيديوهات متاح فقط للمعلمين والمشرفين',
+                ], 403);
+            }
+        }
+
+        return null;
+    }
+
+    protected function looksLikeVideoMedia(string $value): bool
+    {
+        $normalized = strtolower(trim($value));
+
+        if ($normalized === '') {
+            return false;
+        }
+
+        if (str_contains($normalized, 'video/')) {
+            return true;
+        }
+
+        foreach (['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', '3gp', 'mpeg', 'mpg', 'wmv'] as $extension) {
+            if (str_ends_with($normalized, '.' . $extension) || str_contains($normalized, '.' . $extension) || str_contains($normalized, $extension)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function index(Request $request)
     {
         $userId = (int) auth()->id();
@@ -464,6 +525,11 @@ class ChatController extends Controller
         }
 
         $validated = $validator->validated();
+        $videoRestrictionResponse = $this->rejectVideoUploadForRegularUsers($request, $validated);
+        if ($videoRestrictionResponse) {
+            return $videoRestrictionResponse;
+        }
+
         $senderId = (int) auth()->id();
         $receiverId = isset($validated['receiver_id']) ? (int) $validated['receiver_id'] : null;
         $chatId = $validated['chat_id'] ?? null;
@@ -674,6 +740,11 @@ class ChatController extends Controller
             'file_name' => ['nullable', 'string'],
             'file_size' => ['nullable', 'integer'],
         ]);
+
+        $videoRestrictionResponse = $this->rejectVideoUploadForRegularUsers($request, $validated);
+        if ($videoRestrictionResponse) {
+            return $videoRestrictionResponse;
+        }
 
         $senderId = (int) auth()->id();
         $receiverId = (int) $validated['receiver_id'];

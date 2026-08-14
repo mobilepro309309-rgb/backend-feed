@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Questions;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use App\Models\Message;
+use App\Models\QuestionExplanation;
 use App\Models\Questions\TrueFalseQuestion;
 use App\Models\User;
 use App\Services\NotificationService;
@@ -26,7 +27,7 @@ class TrueFalseQuestionController extends Controller
     {
         $user = $request->user();
         $items = $this->applyQuestionListingFilters(
-            TrueFalseQuestion::query()->with('user'),
+            TrueFalseQuestion::query()->with(['user', 'explanation']),
             $request
         )->latest('created_at')->get();
 
@@ -41,6 +42,7 @@ class TrueFalseQuestionController extends Controller
                     'status' => $item->status ?? 'draft',
                     'badge_text' => $item->badge_text,
                     'file_url' => $item->file_url ?? null,
+                    'explanation_video_url' => $item->explanation?->video_url ?? null,
                     'prompt' => $item->prompt,
                     'question' => $item->prompt,
                     'description' => $item->prompt,
@@ -101,7 +103,7 @@ class TrueFalseQuestionController extends Controller
     public function show(string $id)
     {
         $resolvedQuizId = $this->resolveQuizId($id);
-        $item = $resolvedQuizId ? TrueFalseQuestion::find($resolvedQuizId) : null;
+        $item = $resolvedQuizId ? TrueFalseQuestion::with('explanation')->find($resolvedQuizId) : null;
 
         if (! $item) {
             return response()->json(['message' => 'السؤال غير موجود'], 404);
@@ -115,6 +117,7 @@ class TrueFalseQuestionController extends Controller
             'prompt' => $item->prompt,
             'question' => $item->prompt,
             'file_url' => $item->file_url ?? null,
+            'explanation_video_url' => $item->explanation?->video_url ?? null,
             'correct_answer' => (bool) $item->correct_answer,
             'correctAnswer' => (bool) $item->correct_answer,
             'explanation' => $item->explanation,
@@ -165,6 +168,7 @@ class TrueFalseQuestionController extends Controller
             'explanation' => ['nullable', 'string'],
             'badge_text' => ['nullable', 'string', 'max:120'],
             'file_url' => ['nullable', 'string', 'max:2048'],
+            'explanation_video_url' => ['nullable', 'string', 'max:2048'],
             'status' => ['nullable', 'in:draft,published'],
         ]);
 
@@ -199,6 +203,12 @@ class TrueFalseQuestionController extends Controller
             'status' => $validated['status'] ?? 'draft',
             'published_at' => ($validated['status'] ?? 'draft') === 'published' ? now() : null,
         ]);
+
+        QuestionExplanation::upsertForQuestion(
+            $question,
+            $request->input('explanation_video_url'),
+            $user->id
+        );
 
         try {
             $questionGrade = (string) ($question->school_grade ?? '');

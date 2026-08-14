@@ -10,6 +10,56 @@ use Illuminate\Support\Facades\DB;
 
 class PostController extends Controller
 {
+    private function rejectVideoUploadForRegularUsers(Request $request, array $attachments = []): ?\Illuminate\Http\JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user || mb_strtolower(trim((string) ($user->role ?? ''))) !== 'user') {
+            return null;
+        }
+
+        $attachmentList = is_array($attachments) ? $attachments : [];
+
+        foreach ($attachmentList as $attachment) {
+            if (! is_array($attachment)) {
+                continue;
+            }
+
+            $mimeType = (string) ($attachment['mimeType'] ?? $attachment['mime_type'] ?? '');
+            $name = (string) ($attachment['name'] ?? '');
+            $uri = (string) ($attachment['uri'] ?? '');
+
+            if ($this->looksLikeVideoMedia($mimeType) || $this->looksLikeVideoMedia($name) || $this->looksLikeVideoMedia($uri)) {
+                return response()->json([
+                    'message' => 'رفع الفيديوهات متاح فقط للمعلمين والمشرفين',
+                ], 403);
+            }
+        }
+
+        return null;
+    }
+
+    private function looksLikeVideoMedia(string $value): bool
+    {
+        $normalized = strtolower(trim($value));
+
+        if ($normalized === '') {
+            return false;
+        }
+
+        if (str_contains($normalized, 'video/')) {
+            return true;
+        }
+
+        foreach (['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', '3gp', 'mpeg', 'mpg', 'wmv'] as $extension) {
+            if (str_ends_with($normalized, '.' . $extension) || str_contains($normalized, '.' . $extension) || str_contains($normalized, $extension)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -96,6 +146,11 @@ class PostController extends Controller
             'attachments.*.size' => ['nullable', 'integer'],
             'status' => ['nullable', 'in:draft,published'],
         ]);
+
+        $videoRestrictionResponse = $this->rejectVideoUploadForRegularUsers($request, $validated['attachments'] ?? []);
+        if ($videoRestrictionResponse) {
+            return $videoRestrictionResponse;
+        }
 
         $post = Post::create([
             'user_id' => $user->id,

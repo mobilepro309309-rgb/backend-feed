@@ -16,11 +16,40 @@ use App\Models\UserQuizAttempt;
 
 class FeedResource extends JsonResource
 {
+    private function resolveExplanationVideoUrl($feedable): ?string
+    {
+        if (! $feedable || ! method_exists($feedable, 'getKey')) {
+            return null;
+        }
+
+        if (method_exists($feedable, 'explanation')) {
+            $feedable->loadMissing('explanation');
+
+            return $feedable->explanation?->video_url ?? null;
+        }
+
+        $questionId = $feedable->getKey();
+        if ($questionId === null) {
+            return null;
+        }
+
+        $explanation = \App\Models\QuestionExplanation::query()
+            ->where('question_type', $feedable::class)
+            ->where('question_id', $questionId)
+            ->first();
+
+        return $explanation?->video_url ?? null;
+    }
+
     public function toArray($request): array
     {
         $feedable = $this->feedable;
         if ($feedable) {
             $feedable->loadMissing('user');
+
+            if (method_exists($feedable, 'explanation')) {
+                $feedable->loadMissing('explanation');
+            }
         }
 
         $details = $feedable ? match (get_class($feedable)) {
@@ -35,16 +64,20 @@ class FeedResource extends JsonResource
             default => null,
         } : null;
 
-        if (is_array($details) && $feedable && $feedable->relationLoaded('user') && $feedable->user) {
-            $details['user'] = [
-                'id' => $feedable->user->id ?? null,
-                'name' => $feedable->user->name ?? null,
-                'avatar' => $feedable->user->avatar_url ?? $feedable->user->profile_image ?? $feedable->user->avatar ?? null,
-                'role' => $feedable->user->role ?? null,
-                'gender' => $feedable->user->gender ?? null,
-                'school_grade' => $feedable->user->school_grade ?? null,
-                'grade' => $feedable->user->school_grade ?? null,
-            ];
+        if (is_array($details) && $feedable) {
+            $details['explanation_video_url'] = $this->resolveExplanationVideoUrl($feedable);
+
+            if ($feedable->relationLoaded('user') && $feedable->user) {
+                $details['user'] = [
+                    'id' => $feedable->user->id ?? null,
+                    'name' => $feedable->user->name ?? null,
+                    'avatar' => $feedable->user->avatar_url ?? $feedable->user->profile_image ?? $feedable->user->avatar ?? null,
+                    'role' => $feedable->user->role ?? null,
+                    'gender' => $feedable->user->gender ?? null,
+                    'school_grade' => $feedable->user->school_grade ?? null,
+                    'grade' => $feedable->user->school_grade ?? null,
+                ];
+            }
         }
 
         $type = $feedable ? match (get_class($feedable)) {

@@ -9,6 +9,7 @@ use App\Models\Challenges\ComparisonChallenge;
 use App\Models\Challenges\DailyChallenge;
 use App\Models\Challenges\FindTheBugChallenge;
 use App\Models\Challenges\LiveDuelChallenge;
+use App\Models\QuestionExplanation;
 use App\Models\Questions\MultipleChoiceQuestion;
 use App\Models\Questions\TrueFalseQuestion;
 use App\Models\TeacherScope;
@@ -332,6 +333,9 @@ class TeacherManagementController extends Controller
         try {
             $item->fill($validated);
             $item->save();
+
+            $videoUrl = $request->input('explanation_video_url', data_get($item->explanation, 'video_url'));
+            QuestionExplanation::upsertForQuestion($item, $videoUrl, $user->id);
         } catch (\Throwable $e) {
             Log::error('[TeacherManagementController] Failed to update question', [
                 'type' => $type,
@@ -366,6 +370,7 @@ class TeacherManagementController extends Controller
                 'correct_index' => ['required', 'integer', 'min:0', 'max:3'],
                 'badge_text' => ['nullable', 'string', 'max:120'],
                 'file_url' => ['nullable', 'string', 'max:2048'],
+                'explanation_video_url' => ['nullable', 'string', 'max:2048'],
                 'status' => ['nullable', 'in:draft,published'],
             ],
             'true_false' => [
@@ -378,6 +383,7 @@ class TeacherManagementController extends Controller
                 'explanation' => ['nullable', 'string'],
                 'badge_text' => ['nullable', 'string', 'max:120'],
                 'file_url' => ['nullable', 'string', 'max:2048'],
+                'explanation_video_url' => ['nullable', 'string', 'max:2048'],
                 'status' => ['nullable', 'in:draft,published'],
             ],
             'daily_challenge' => [
