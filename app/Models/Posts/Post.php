@@ -109,4 +109,37 @@ class Post extends Model
     {
         return 0; // TODO: Implement shares table later
     }
+
+    public function scopeForGradeFilter($query, mixed $gradeValue)
+    {
+        $normalizedGrade = $gradeValue === null || $gradeValue === ''
+            ? null
+            : User::normalizeSchoolGradeValue((string) $gradeValue);
+
+        if ($normalizedGrade === null || $normalizedGrade === '') {
+            return $query;
+        }
+
+        return $query->whereHas('user', function ($userQuery) use ($normalizedGrade) {
+            // عايير الـ school_grade من الـ database أيضاً عشان نقارن
+            $userQuery->whereRaw("
+                CASE 
+                    WHEN school_grade IS NULL THEN ''
+                    WHEN LOWER(school_grade) IN ('اول', 'اولى', 'اولي', 'اولى اعدادي', 'اول اعدادي', '1') THEN '1'
+                    WHEN LOWER(school_grade) IN ('ثاني', 'ثانية', 'ثانى', 'ثانيه', 'ثاني اعدادي', 'ثانى اعدادي', '2') THEN '2'
+                    WHEN LOWER(school_grade) IN ('ثالث', 'ثالثة', 'ثالثه', 'ثالث اعدادي', 'ثالثة اعدادي', '3') THEN '3'
+                    WHEN LOWER(school_grade) IN ('رابع', 'رابعة', 'رابع ثانوي', 'اول ثانوي', '4') THEN '4'
+                    WHEN LOWER(school_grade) IN ('خامس', 'خامسة', 'ثاني ثانوي', '5') THEN '5'
+                    WHEN LOWER(school_grade) IN ('سادس', 'سادسة', 'ثالث ثانوي', '6') THEN '6'
+                    WHEN LOWER(school_grade) IN ('سابع', 'سابعة', '7') THEN '7'
+                    WHEN LOWER(school_grade) IN ('ثامن', 'ثامنة', '8') THEN '8'
+                    WHEN LOWER(school_grade) IN ('تاسع', 'تاسعة', '9') THEN '9'
+                    WHEN LOWER(school_grade) IN ('عاشر', 'عاشرة', '10') THEN '10'
+                    WHEN LOWER(school_grade) IN ('حادي عشر', 'حادية عشرة', '11') THEN '11'
+                    WHEN LOWER(school_grade) IN ('ثاني عشر', 'ثانية عشرة', '12') THEN '12'
+                    ELSE LOWER(school_grade)
+                END = ?
+            ", [$normalizedGrade]);
+        });
+    }
 }

@@ -6,12 +6,12 @@ use App\Http\Controllers\Api\Users\{UserController, UserProfileController};
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Posts\{CommentController, PostController};
 use App\Http\Controllers\Api\{InteractiveVideoController, LatestQuestionsController, QuizBatchController, QuizTransactionController, UserSelectionController};
-use App\Http\Controllers\Api\Admin\{AdminRoleController, TeacherManagementController};
+use App\Http\Controllers\Api\Admin\{AdminHomeController, AdminRoleController, AdminUsersController, AdminDeviceBanController, TeacherManagementController};
 use App\Http\Controllers\Api\Location\{LocationController, NearbyStudentsController};
 use App\Http\Controllers\Api\Challenges\{CheatSheetController, CloudCapsuleChallengeController, ComparisonChallengeController, DailyChallengeController, FindTheBugChallengeController, LiveDuelChallengeController};
 use App\Http\Controllers\Api\Questions\{MultipleChoiceQuestionController, TrueFalseQuestionController};
 use App\Http\Controllers\Api\v1\FeedController;
-use App\Http\Controllers\{KashierController, NotificationController, SavedPostsController, WalletController, YouTubeVideoController};
+use App\Http\Controllers\{KashierController, NotificationController, SavedPostsController, ShareRewardController, WalletController, YouTubeVideoController};
 
 Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
@@ -44,10 +44,12 @@ $apiRoutes = function (): void {
         return response()->json(['status' => 'success', 'chat_id' => $chatId]);
     });
 
+    Route::get('/admin/users/filters/location', [AdminUsersController::class, 'getLocationFilters']);
+
     Route::get('/debug-chat/{chatId}', [\App\Http\Controllers\ChatController::class, 'getMessages'])
         ->withoutMiddleware(['auth:sanctum', 'throttle']);
 
-    Route::middleware('auth:sanctum')->group(function (): void {
+    Route::middleware(['auth:sanctum', \App\Http\Middleware\CheckBannedDevice::class])->group(function (): void {
         Route::get('/feed', [FeedController::class, 'index']);
         Route::get('/chats/{chatId}/messages', [\App\Http\Controllers\ChatController::class, 'getMessages']);
         Route::get('/inbox', [\App\Http\Controllers\ChatController::class, 'getInbox']);
@@ -77,6 +79,7 @@ $apiRoutes = function (): void {
         Route::get('/user/profile', [UserProfileController::class, 'show']);
         Route::put('/user/profile', [UserProfileController::class, 'update']);
         Route::post('/wallet/top-up', [WalletController::class, 'topUp']);
+        Route::post('/share/reward', [ShareRewardController::class, 'claimShareReward'])->middleware('auth:sanctum');
 
         // Quiz Transaction Routes - Gamified Quiz Progression System (Phase 1)
         Route::post('/quiz/unlock', [QuizTransactionController::class, 'unlock']);
@@ -119,6 +122,21 @@ $apiRoutes = function (): void {
         });
 
         Route::get('/admin/users/lookup/{id}', [TeacherManagementController::class, 'lookupUser']);
+        Route::get('/admin/home', [AdminHomeController::class, 'index']);
+        Route::get('/admin/dashboard/home', [AdminHomeController::class, 'index']);
+        Route::get('/admin/dashboard/posts', [AdminHomeController::class, 'getPosts']);
+        Route::get('/admin/users', [AdminUsersController::class, 'index']);
+        Route::put('/admin/users/{user}', [AdminUsersController::class, 'update']);
+        Route::delete('/admin/users/{user}', [AdminUsersController::class, 'destroy']);
+        Route::get('/admin/posts', [AdminHomeController::class, 'getPosts']);
+
+        // Explicit device ban route definitions to match the mobile app calls.
+        Route::post('/admin/devices/ban', [AdminDeviceBanController::class, 'banDevice']);
+        Route::post('/devices/ban', [AdminDeviceBanController::class, 'banDevice']);
+        Route::delete('/admin/devices/unban/{ban}', [AdminDeviceBanController::class, 'unbanDevice']);
+        Route::delete('/devices/unban/{ban}', [AdminDeviceBanController::class, 'unbanDevice']);
+        Route::get('/admin/devices/banned', [AdminDeviceBanController::class, 'getBannedDevices']);
+        Route::get('/devices/banned', [AdminDeviceBanController::class, 'getBannedDevices']);
 
         Route::get('/posts', [PostController::class, 'index']);
         Route::get('/posts/{post}', [PostController::class, 'show']);

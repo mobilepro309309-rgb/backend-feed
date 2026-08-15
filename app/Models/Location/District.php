@@ -11,6 +11,9 @@ class District extends Model
 {
     use HasFactory;
 
+    protected $table = 'districts';
+    public $timestamps = true;
+
     /**
      * @var string[]
      */

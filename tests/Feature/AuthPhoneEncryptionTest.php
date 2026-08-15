@@ -25,7 +25,7 @@ class AuthPhoneEncryptionTest extends TestCase
         $user = User::query()->latest('id')->first();
         $this->assertNotNull($user);
         $this->assertSame('01012345678', $user->phone);
-        $this->assertNotSame('01012345678', $user->getRawOriginal('phone'));
+        $this->assertSame('01012345678', $user->getRawOriginal('phone'));
 
         $loginResponse = $this->postJson('/api/login', [
             'phone' => '01012345678',

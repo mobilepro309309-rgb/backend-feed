@@ -16,6 +16,7 @@ use App\Models\Friendship;
 use App\Models\PostVote;
 use App\Models\TeacherScope;
 use App\Models\Wallet;
+use App\Models\ShareRewardLog;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -232,6 +233,11 @@ class User extends Authenticatable
     public function teacherScopes(): HasMany
     {
         return $this->hasMany(TeacherScope::class);
+    }
+
+    public function shareRewardLogs(): HasMany
+    {
+        return $this->hasMany(ShareRewardLog::class);
     }
 
     public function hasScope($grade, $subject, $permission = 'can_answer')

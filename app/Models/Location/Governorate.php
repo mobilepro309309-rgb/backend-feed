@@ -10,6 +10,9 @@ class Governorate extends Model
 {
     use HasFactory;
 
+    protected $table = 'governorates';
+    public $timestamps = true;
+
     /**
      * @var string[]
      */

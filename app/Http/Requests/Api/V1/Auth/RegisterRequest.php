@@ -19,6 +19,8 @@ class RegisterRequest extends BaseFormRequest
             'village' => ['nullable', 'string', 'max:255'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'device_identifier' => ['nullable', 'string'],
+            'device_id' => ['nullable', 'string'],
         ];
     }
 }

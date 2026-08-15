@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources;
 
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Log;
@@ -17,6 +18,70 @@ use App\Models\UserQuizAttempt;
 
 class FeedResource extends JsonResource
 {
+    private function buildQuestionTypeCandidates($feedable): array
+    {
+        if (! $feedable || ! is_object($feedable)) {
+            return [];
+        }
+
+        $className = $feedable::class;
+        $candidates = [];
+
+        foreach ([
+            $className,
+            ltrim($className, '\\'),
+            Str::after($className, '\\'),
+            Str::afterLast($className, '\\'),
+            class_basename($className),
+        ] as $candidate) {
+            if (is_string($candidate) && trim($candidate) !== '') {
+                $candidates[] = trim($candidate);
+            }
+        }
+
+        foreach (Relation::morphMap() as $alias => $mappedClass) {
+            if (! is_string($alias) || ! is_string($mappedClass)) {
+                continue;
+            }
+
+            $aliasName = trim($alias);
+            $mappedClassName = trim($mappedClass);
+
+            if ($mappedClassName === '' || $aliasName === '') {
+                continue;
+            }
+
+            if (
+                $mappedClassName === $className
+                || ltrim($mappedClassName, '\\') === ltrim($className, '\\')
+                || class_basename($mappedClassName) === class_basename($className)
+                || $aliasName === class_basename($className)
+                || $aliasName === Str::afterLast($className, '\\')
+            ) {
+                $candidates[] = $aliasName;
+                $candidates[] = $mappedClassName;
+                $candidates[] = ltrim($mappedClassName, '\\');
+                $candidates[] = class_basename($mappedClassName);
+            }
+        }
+
+        $normalized = [];
+        foreach ($candidates as $candidate) {
+            $sanitized = trim((string) $candidate);
+            if ($sanitized === '') {
+                continue;
+            }
+
+            $normalized[] = $sanitized;
+            $normalized[] = ltrim($sanitized, '\\');
+            $normalized[] = Str::after($sanitized, '\\');
+            $normalized[] = Str::afterLast($sanitized, '\\');
+            $normalized[] = class_basename($sanitized);
+        }
+
+        return array_values(array_unique(array_filter($normalized, fn ($value) => is_string($value) && $value !== '')));
+    }
+
     private function resolveExplanationVideoUrl($feedable): ?string
     {
         if (! $feedable || ! method_exists($feedable, 'getKey')) {
@@ -31,39 +96,35 @@ class FeedResource extends JsonResource
         if (method_exists($feedable, 'explanation')) {
             $feedable->loadMissing('explanation');
 
-            if ($feedable->relationLoaded('explanation') && $feedable->explanation) {
-                return $feedable->explanation->video_url ?? null;
+            $directUrl = $feedable->explanation?->video_url ?? null;
+            if (is_string($directUrl) && trim($directUrl) !== '') {
+                return trim($directUrl);
             }
         }
 
-        $className = $feedable::class;
-        $candidateTypes = [];
+        $candidateTypes = $this->buildQuestionTypeCandidates($feedable);
 
-        foreach ([
-            $className,
-            ltrim($className, '\\'),
-            Str::after($className, '\\'),
-            class_basename($className),
-        ] as $candidateType) {
-            if (is_string($candidateType) && $candidateType !== '') {
-                $candidateTypes[] = $candidateType;
-            }
-        }
+        $query = \App\Models\QuestionExplanation::query()
+            ->where('question_id', $questionId);
 
-        $candidateTypes = array_values(array_unique($candidateTypes));
-
-        $explanation = \App\Models\QuestionExplanation::query()
-            ->where(function ($query) use ($candidateTypes) {
+        if (! empty($candidateTypes)) {
+            $query->where(function ($whereQuery) use ($candidateTypes) {
                 foreach ($candidateTypes as $candidateType) {
-                    $query->orWhere('question_type', $candidateType);
+                    $whereQuery->orWhere('question_type', $candidateType);
                 }
-            })
-            ->where('question_id', $questionId)
-            ->orderByDesc('id')
-            ->first();
+            });
+        } else {
+            $query->where('question_type', $feedable::class);
+        }
+
+        $explanation = $query->orderByDesc('id')->first();
 
         if ($explanation) {
-            return $explanation->video_url ?? null;
+            $videoUrl = $explanation->video_url ?? null;
+
+            if (is_string($videoUrl) && trim($videoUrl) !== '') {
+                return trim($videoUrl);
+            }
         }
 
         if (method_exists($feedable, 'explanation')) {

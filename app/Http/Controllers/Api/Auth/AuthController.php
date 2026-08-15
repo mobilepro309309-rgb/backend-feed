@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
+use App\Models\BannedDevice;
 
 class AuthController extends Controller
 {
@@ -30,6 +31,16 @@ class AuthController extends Controller
 
     public function login(LoginRequest $request)
     {
+        $deviceToken = $request->input('fcm_token');
+        $deviceIdentifier = $request->input('device_identifier') ?? $request->input('device_id');
+
+        if (BannedDevice::isDeviceBanned($deviceToken) || BannedDevice::isDeviceBanned($deviceIdentifier)) {
+            return response()->json([
+                'message' => 'عذراً، هذا الجهاز محظور من استخدام المنصة',
+                'status' => 'device_banned',
+            ], 403);
+        }
+
         $identifier = $request->input('phone') ?? $request->input('identifier') ?? $request->input('email');
         $user = null;
 
@@ -126,6 +137,16 @@ class AuthController extends Controller
 
     public function register(RegisterRequest $request)
     {
+        $deviceToken = $request->input('fcm_token');
+        $deviceIdentifier = $request->input('device_identifier') ?? $request->input('device_id');
+
+        if (BannedDevice::isDeviceBanned($deviceToken) || BannedDevice::isDeviceBanned($deviceIdentifier)) {
+            return response()->json([
+                'message' => 'عذراً، هذا الجهاز محظور من استخدام المنصة',
+                'status' => 'device_banned',
+            ], 403);
+        }
+
         $validated = $request->validated();
 
         $phone = $validated['phone'] ?? null;

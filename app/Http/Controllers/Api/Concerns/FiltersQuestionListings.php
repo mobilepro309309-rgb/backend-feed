@@ -93,8 +93,21 @@ trait FiltersQuestionListings
 
         $variants = [$raw, $normalized];
 
+        // First try direct key lookup
         if (isset($map[$normalized])) {
             $variants = array_merge($variants, $map[$normalized]);
+        } else {
+            // Reverse lookup - search in all values if normalized not found as key
+            foreach ($map as $keyValues) {
+                $normalizedKeyValues = array_map(
+                    fn($v) => $this->normalizeComparableToken($v),
+                    $keyValues
+                );
+                if (in_array($normalized, $normalizedKeyValues, true)) {
+                    $variants = array_merge($variants, $keyValues);
+                    break;
+                }
+            }
         }
 
         return array_values(array_unique(array_filter($variants, static fn ($value) => trim((string) $value) !== '')));
