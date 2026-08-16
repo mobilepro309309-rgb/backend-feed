@@ -67,8 +67,14 @@ class FeedService
         ]);
 
         $query = Feed::query()
+            ->where(function ($q) {
+                $q->where('status', 'published')
+                    ->orWhereNull('status');
+            })
             ->with(['feedable' => function ($query) {
-                $query->with(['user']);
+                $query->where('status', 'published')
+                    ->orWhereNull('status')
+                    ->with(['user']);
             }]);
 
         if (!$user->isAdmin()) {

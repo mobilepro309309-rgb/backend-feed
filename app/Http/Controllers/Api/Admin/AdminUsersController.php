@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\{Hash, Log};
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
@@ -16,9 +16,23 @@ class AdminUsersController extends Controller
 
     public function index(Request $request)
     {
+        $authUser = $request->user();
+        $requestedRole = $this->resolveRoleFilter($request->query('role', 'user'));
         $gradeValue = $this->resolveGradeFilter(
             $request->query('grade_id', $request->query('stage', $request->query('school_grade')))
         );
+
+        Log::info('[AdminUsersController@index] incoming request', [
+            'auth_user_id' => $authUser?->id,
+            'auth_user_role' => $authUser?->role,
+            'request_role' => $request->query('role'),
+            'resolved_role' => $requestedRole,
+            'grade_value' => $gradeValue,
+            'gender' => $request->query('gender'),
+            'governorate_id' => $request->query('governorate_id'),
+            'district_id' => $request->query('district_id'),
+            'limit' => $request->query('limit'),
+        ]);
 
         $genderValue = $this->resolveGenderFilter(
             $request->query('gender')
@@ -27,36 +41,116 @@ class AdminUsersController extends Controller
         $governorateId = $request->query('governorate_id');
         $districtId = $request->query('district_id');
 
-        $query = User::query()
-            ->where('role', 'user')
-            ->select(['id', 'name', 'email', 'phone', 'password', 'gender', 'school_grade', 'role', 'created_at', 'id as user_id']);
+        $teacherAuthorizedGrades = [];
+        if ($authUser && strtolower((string) $authUser->role) === 'teacher') {
+            $teacherAuthorizedGrades = $authUser->teacherScopes()
+                ->pluck('school_grade')
+                ->map(fn ($grade) => $this->resolveGradeFilter($grade))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
 
-        if ($gradeValue !== null) {
-            $query->whereRaw(
-                $this->getGradeNormalizationClause('school_grade', $gradeValue)
-            );
+            if (! empty($teacherAuthorizedGrades)) {
+                $allowedRequestGrade = $gradeValue !== null && in_array($gradeValue, $teacherAuthorizedGrades, true)
+                    ? $gradeValue
+                    : null;
+
+                $query = User::query()
+                    ->select([
+                        'users.id as id',
+                        'users.name',
+                        'users.email',
+                        'users.phone',
+                        'users.password',
+                        'users.gender',
+                        'users.school_grade',
+                        'users.role',
+                        'users.created_at',
+                        'users.id as user_id',
+                    ]);
+
+                $this->applyRoleConstraint($query, $requestedRole ?? 'user');
+
+                $query->where(function ($gradeQuery) use ($teacherAuthorizedGrades, $allowedRequestGrade) {
+                    foreach ($teacherAuthorizedGrades as $authorizedGrade) {
+                        $gradeQuery->orWhereRaw(
+                            $this->getGradeNormalizationClause('school_grade', (string) $authorizedGrade)
+                        );
+                    }
+
+                    if ($allowedRequestGrade !== null) {
+                        $gradeQuery->whereRaw(
+                            $this->getGradeNormalizationClause('school_grade', (string) $allowedRequestGrade)
+                        );
+                    }
+                });
+            } else {
+                $query = User::query()->whereRaw('0 = 1');
+            }
+        } else {
+            $query = User::query()
+                ->select([
+                    'users.id as id',
+                    'users.name',
+                    'users.email',
+                    'users.phone',
+                    'users.password',
+                    'users.gender',
+                    'users.school_grade',
+                    'users.role',
+                    'users.created_at',
+                    'users.id as user_id',
+                ]);
+
+            $this->applyRoleConstraint($query, $requestedRole ?? 'user');
+
+            if ($gradeValue !== null) {
+                $query->whereRaw(
+                    $this->getGradeNormalizationClause('school_grade', $gradeValue)
+                );
+            }
         }
 
         if ($genderValue !== null) {
             $query->where('gender', $genderValue);
         }
 
+        $effectiveGovernorateName = null;
+        $effectiveDistrictName = null;
+
         if ($governorateId) {
-            $query->join('user_addresses', 'users.id', '=', 'user_addresses.user_id')
-                  ->where('user_addresses.governorate', $governorateId);
+            $resolvedGovernorate = Governorate::find($governorateId);
+            $effectiveGovernorateName = $resolvedGovernorate?->name_ar ?: $resolvedGovernorate?->name_en;
+            if ($effectiveGovernorateName) {
+                $query->join('user_addresses', 'users.id', '=', 'user_addresses.user_id')
+                    ->where('user_addresses.governorate', $effectiveGovernorateName);
+            }
         }
 
         if ($districtId) {
-            if (!$governorateId) {
-                $query->join('user_addresses', 'users.id', '=', 'user_addresses.user_id');
+            $resolvedDistrict = District::find($districtId);
+            $effectiveDistrictName = $resolvedDistrict?->name_ar ?: $resolvedDistrict?->name_en;
+
+            if ($effectiveDistrictName) {
+                if (! $governorateId && ! $query->getQuery()->joins) {
+                    $query->join('user_addresses', 'users.id', '=', 'user_addresses.user_id');
+                }
+                $query->where('user_addresses.city_or_center', $effectiveDistrictName);
             }
-            $query->where('user_addresses.city_or_center', $districtId);
         }
 
-        $users = $query
+        $usersQuery = $query
             ->with('address')
-            ->orderByDesc('created_at')
-            ->limit((int) $request->query('limit', 50))
+            ->orderByDesc('users.created_at')
+            ->limit((int) $request->query('limit', 50));
+
+        Log::info('[AdminUsersController@index] final query debug', [
+            'sql' => $usersQuery->toSql(),
+            'bindings' => $usersQuery->getBindings(),
+        ]);
+
+        $users = $usersQuery
             ->get()
             ->map(function (User $userData) {
                 $address = $userData->address;
@@ -111,6 +205,43 @@ class AdminUsersController extends Controller
         }
 
         return $normalized;
+    }
+
+    protected function resolveRoleFilter(mixed $value): ?string
+    {
+        if ($value === null || $value === '' || strtolower((string) $value) === 'all' || trim((string) $value) === 'كل المستخدمين') {
+            return null;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+        $normalized = str_replace(['-', '_'], ' ', $normalized);
+
+        $roleMap = [
+            'student' => 'user',
+            'students' => 'user',
+            'user' => 'user',
+            'users' => 'user',
+            'teacher' => 'teacher',
+            'teachers' => 'teacher',
+            'main admin' => 'main-admin',
+            'main-admin' => 'main-admin',
+            'admin' => 'admin',
+        ];
+
+        return $roleMap[$normalized] ?? preg_replace('/\s+/', '-', $normalized);
+    }
+
+    protected function applyRoleConstraint($query, string $role): void
+    {
+        $normalizedRole = trim((string) $role);
+        if ($normalizedRole === '') {
+            return;
+        }
+
+        $query->where(function ($roleQuery) use ($normalizedRole) {
+            $roleQuery->whereRaw('LOWER(TRIM(COALESCE(role, ""))) = ?', [mb_strtolower($normalizedRole)])
+                ->orWhereRaw('LOWER(TRIM(COALESCE(role, ""))) = ?', [mb_strtolower(str_replace(' ', '-', $normalizedRole))]);
+        });
     }
 
     protected function resolveGradeFilter(mixed $value): ?string
@@ -180,7 +311,6 @@ class AdminUsersController extends Controller
     {
         $validated = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
-            'email' => ['sometimes', 'nullable', 'email', 'max:255', 'unique:users,email,' . $user->id],
             'phone' => ['sometimes', 'nullable', 'string', 'max:25', 'unique:users,phone,' . $user->id],
             'password' => ['sometimes', 'nullable', 'string', 'min:6', 'max:255'],
             'gender' => ['sometimes', 'nullable', 'in:ولد,بنت'],
@@ -201,7 +331,6 @@ class AdminUsersController extends Controller
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
-                'email' => $user->email,
                 'phone' => $user->phone,
                 'gender' => $user->gender,
                 'school_grade' => $user->school_grade,

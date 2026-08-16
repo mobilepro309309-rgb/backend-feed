@@ -21,27 +21,126 @@ class AdminHomeController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
+        $userRole = strtolower(trim((string) ($user->role ?? '')));
+        $teacherScopeAccess = null;
 
         $gradeValue = $this->resolveGradeFilter(
             $request->query('grade_id', $request->query('stage', $request->query('school_grade')))
         );
-
         $subjectValue = $this->resolveListingSubject($request);
+
+        if ($userRole === 'teacher') {
+            $teacherScopeAccess = $this->resolveTeacherScopeAccess($user);
+            $allowedGrades = $teacherScopeAccess['grades'];
+            $allowedSubjects = $teacherScopeAccess['subjects'];
+
+            if ($gradeValue !== null && ! empty($allowedGrades) && ! in_array($gradeValue, $allowedGrades, true)) {
+                $gradeValue = null;
+            }
+
+            if ($subjectValue !== null && ! empty($allowedSubjects)) {
+                $normalizedSubject = strtolower(trim((string) $subjectValue));
+                if (! in_array($normalizedSubject, $allowedSubjects, true)) {
+                    $subjectValue = null;
+                }
+            }
+        }
+
+        if ($userRole === 'teacher' && $teacherScopeAccess !== null && empty($teacherScopeAccess['grades']) && empty($teacherScopeAccess['subjects'])) {
+            return response()->json([
+                'message' => 'لا توجد صلاحيات مخصصة لهذا المدرس.',
+                'filter' => [
+                    'grade_id' => null,
+                    'stage' => null,
+                    'label' => 'لا توجد صلاحيات',
+                ],
+                'stats' => [
+                    'active_students_count' => 0,
+                    'posts_count' => 0,
+                    'questions_count' => 0,
+                    'total_content_count' => 0,
+                    'pending_requests_count' => 0,
+                    'requests_count' => 0,
+                    'users_count' => 0,
+                    'interactive_videos_count' => 0,
+                    'teachers_count' => 0,
+                    'admins_count' => 0,
+                ],
+            ]);
+        }
 
         $activeStudentsQuery = User::query()
             ->where('role', 'user');
+
+        $postsQuery = Post::query();
+
+        if ($userRole === 'teacher' && $teacherScopeAccess !== null) {
+            $allowedGrades = $teacherScopeAccess['grades'];
+            $allowedSubjects = $teacherScopeAccess['subjects'];
+
+            if (! empty($allowedGrades)) {
+                $activeStudentsQuery->where(function ($gradeQuery) use ($allowedGrades) {
+                    foreach ($allowedGrades as $index => $allowedGrade) {
+                        $normalizedGrade = TeacherScope::normalizeGradeValue($allowedGrade);
+                        if ($normalizedGrade === null || $normalizedGrade === '') {
+                            continue;
+                        }
+
+                        $gradeClause = $this->getGradeNormalizationClause('school_grade', (string) $normalizedGrade);
+                        if ($index === 0) {
+                            $gradeQuery->whereRaw($gradeClause);
+                        } else {
+                            $gradeQuery->orWhereRaw($gradeClause);
+                        }
+                    }
+                });
+
+                $postsQuery->whereHas('user', function ($userQuery) use ($allowedGrades) {
+                    foreach ($allowedGrades as $index => $allowedGrade) {
+                        $normalizedGrade = TeacherScope::normalizeGradeValue($allowedGrade);
+                        if ($normalizedGrade === null || $normalizedGrade === '') {
+                            continue;
+                        }
+
+                        $gradeClause = $this->getGradeNormalizationClause('users.school_grade', (string) $normalizedGrade);
+                        if ($index === 0) {
+                            $userQuery->whereRaw($gradeClause);
+                        } else {
+                            $userQuery->orWhereRaw($gradeClause);
+                        }
+                    }
+                });
+            }
+
+            if (! empty($allowedSubjects)) {
+                $postsQuery->where(function ($subjectQuery) use ($allowedSubjects) {
+                    foreach ($allowedSubjects as $index => $subject) {
+                        $normalizedSubject = strtolower(trim((string) $subject));
+                        if ($normalizedSubject === '') {
+                            continue;
+                        }
+
+                        if ($index === 0) {
+                            $subjectQuery->whereRaw('LOWER(TRIM(subject)) = ?', [$normalizedSubject]);
+                        } else {
+                            $subjectQuery->orWhereRaw('LOWER(TRIM(subject)) = ?', [$normalizedSubject]);
+                        }
+                    }
+                });
+            }
+        }
 
         if ($gradeValue !== null) {
             $activeStudentsQuery->whereRaw(
                 $this->getGradeNormalizationClause('school_grade', $gradeValue)
             );
+            $postsQuery->whereHas('user', function ($userQuery) use ($gradeValue) {
+                $userQuery->whereRaw(
+                    $this->getGradeNormalizationClause('users.school_grade', $gradeValue)
+                );
+            });
         }
 
-        $postsQuery = Post::query();
-        if ($gradeValue !== null) {
-            $postsQuery = $postsQuery->forGradeFilter($gradeValue);
-        }
-        
         // Apply subject filter with proper variant matching
         if ($subjectValue !== null) {
             $subjectVariants = $this->buildSubjectVariants($subjectValue);
@@ -78,6 +177,46 @@ class AdminHomeController extends Controller
         foreach ($questionQueryBuilders as $builderConfig) {
             $model = $builderConfig['model'];
             $query = $model::query();
+
+            if ($userRole === 'teacher' && $teacherScopeAccess !== null) {
+                $allowedGrades = $teacherScopeAccess['grades'];
+                $allowedSubjects = $teacherScopeAccess['subjects'];
+
+                if (! empty($allowedGrades)) {
+                    $query->whereHas('user', function ($userQuery) use ($allowedGrades) {
+                        foreach ($allowedGrades as $index => $allowedGrade) {
+                            $normalizedGrade = TeacherScope::normalizeGradeValue($allowedGrade);
+                            if ($normalizedGrade === null || $normalizedGrade === '') {
+                                continue;
+                            }
+
+                            $gradeClause = $this->getGradeNormalizationClause('users.school_grade', (string) $normalizedGrade);
+                            if ($index === 0) {
+                                $userQuery->whereRaw($gradeClause);
+                            } else {
+                                $userQuery->orWhereRaw($gradeClause);
+                            }
+                        }
+                    });
+                }
+
+                if (! empty($allowedSubjects)) {
+                    $query->where(function ($subjectQuery) use ($allowedSubjects) {
+                        foreach ($allowedSubjects as $index => $subject) {
+                            $normalizedSubject = strtolower(trim((string) $subject));
+                            if ($normalizedSubject === '') {
+                                continue;
+                            }
+
+                            if ($index === 0) {
+                                $subjectQuery->whereRaw('LOWER(TRIM(subject)) = ?', [$normalizedSubject]);
+                            } else {
+                                $subjectQuery->orWhereRaw('LOWER(TRIM(subject)) = ?', [$normalizedSubject]);
+                            }
+                        }
+                    });
+                }
+            }
 
             if ($gradeValue !== null) {
                 $query->whereHas('user', function ($userQuery) use ($gradeValue) {
@@ -152,6 +291,31 @@ class AdminHomeController extends Controller
             ],
             'stats' => $stats,
         ]);
+    }
+
+    protected function resolveTeacherScopeAccess(User $user): array
+    {
+        $scopes = TeacherScope::query()->where('user_id', $user->id)->get();
+
+        $grades = $scopes
+            ->map(fn ($scope) => TeacherScope::normalizeGradeValue($scope->school_grade))
+            ->filter(fn ($grade) => $grade !== null && $grade !== '')
+            ->map(fn ($grade) => (string) $grade)
+            ->unique()
+            ->values()
+            ->all();
+
+        $subjects = $scopes
+            ->map(fn ($scope) => strtolower(trim((string) $scope->subject)))
+            ->filter(fn ($subject) => $subject !== '')
+            ->unique()
+            ->values()
+            ->all();
+
+        return [
+            'grades' => $grades,
+            'subjects' => $subjects,
+        ];
     }
 
     public function getPosts(Request $request)

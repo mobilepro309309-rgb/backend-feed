@@ -63,4 +63,50 @@ class FeedServiceGradeFilterTest extends TestCase
         $this->assertContains('same grade post', $contents);
         $this->assertNotContains('different grade post', $contents);
     }
+
+    public function test_it_excludes_draft_items_from_student_feed_results(): void
+    {
+        $viewer = User::factory()->create([
+            'role' => 'user',
+            'school_grade' => '1',
+        ]);
+
+        $matchingAuthor = User::factory()->create([
+            'role' => 'user',
+            'school_grade' => '1',
+        ]);
+
+        $publishedPost = Post::create([
+            'user_id' => $matchingAuthor->id,
+            'content' => 'published post',
+            'subject' => 'same',
+            'status' => 'published',
+        ]);
+        Feed::create([
+            'feedable_type' => Post::class,
+            'feedable_id' => $publishedPost->id,
+            'status' => 'published',
+        ]);
+
+        $draftPost = Post::create([
+            'user_id' => $matchingAuthor->id,
+            'content' => 'draft post must be hidden',
+            'subject' => 'same',
+            'status' => 'draft',
+        ]);
+        Feed::create([
+            'feedable_type' => Post::class,
+            'feedable_id' => $draftPost->id,
+            'status' => 'draft',
+        ]);
+
+        $this->actingAs($viewer);
+
+        $service = app(FeedService::class);
+        $feed = $service->getPaginatedFeed(10);
+        $contents = $feed->getCollection()->pluck('feedable.content')->all();
+
+        $this->assertContains('published post', $contents);
+        $this->assertNotContains('draft post must be hidden', $contents);
+    }
 }

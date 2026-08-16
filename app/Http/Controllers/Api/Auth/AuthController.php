@@ -125,8 +125,9 @@ class AuthController extends Controller
             }
         }
 
+        // Disabled intentionally: do not create a new-device login notification / approval push when a login is marked pending.
         $pending = $this->createPendingDeviceLogin($user, $deviceToken, $deviceType, $deviceIdentifier);
-        $this->notifyTrustedDevicesOfPendingLogin($user, $pending);
+        // $this->notifyTrustedDevicesOfPendingLogin($user, $pending);
 
         return response()->json([
             'status' => 'pending_device_approval',
@@ -251,56 +252,21 @@ class AuthController extends Controller
 
     protected function notifyTrustedDevicesOfPendingLogin(User $user, \App\Models\PendingDeviceLogin $pending): void
     {
-        $trustedDevices = UserDevice::where('user_id', $user->id)
-            ->where('trusted', true)
-            ->where('fcm_token', '!=', '')
-            ->get();
-
-        $tokens = $trustedDevices->pluck('fcm_token')
-            ->filter()
-            ->values()
-            ->toArray();
-
-        if (empty($tokens)) {
-            Log::warning('No trusted device tokens found for pending login approval', ['user_id' => $user->id]);
-            return;
-        }
-
-        $title = 'محاولة تسجيل دخول جديدة';
-        $body = 'محاولة تسجيل دخول جديدة من هاتف آخر. هل توافق؟';
-
-        $this->notificationService->sendNotificationToDeviceTokens(
-            $user,
-            $title,
-            $body,
-            [
-                'type' => 'security_login_alert',
-                'action_type' => 'security_alert',
-                'user_id' => $user->id,
-                'pending_id' => $pending->id,
-                'target_device_id' => $pending->target_device_id,
-            ],
-            $tokens
-        );
+        // Disabled intentionally: no security login notification is created for trusted devices during a pending login.
+        Log::info('[AuthController] Trusted-device pending login notification disabled', [
+            'user_id' => $user->id,
+            'pending_id' => $pending->id,
+        ]);
     }
 
     protected function sendSecurityNotificationToDevice(UserDevice $device, User $user, string $title, string $body, UserDevice $newDevice): void
     {
-        $this->notificationService->sendNotificationToDeviceTokens(
-            $user,
-            $title,
-            $body,
-            [
-                'type' => 'security_login_alert',
-                'action_type' => 'security_alert',
-                'user_id' => $user->id,
-                'target_device_id' => $newDevice->id,
-                'target_device_identifier' => $newDevice->device_identifier,
-                'target_device_type' => $newDevice->device_type,
-                'target_session_token_id' => $newDevice->access_token_id,
-            ],
-            [$device->fcm_token]
-        );
+        // Disabled intentionally: no automatic security notification is sent to the device upon new login detection.
+        Log::info('[AuthController] Security notification to device disabled', [
+            'user_id' => $user->id,
+            'device_id' => $device->id,
+            'new_device_id' => $newDevice->id,
+        ]);
     }
 
     protected function serializeUser(User $user): array

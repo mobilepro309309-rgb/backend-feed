@@ -2,35 +2,46 @@
 
 namespace App\Events;
 
-use Illuminate\Broadcasting\Channel;
+use App\Models\Notification;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class NewNotificationEvent
+class NewNotificationEvent implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    /**
-     * Create a new event instance.
-     */
-    public function __construct()
-    {
-        //
-    }
+    public function __construct(
+        public Notification $notification,
+        public int $userId,
+    ) {}
 
-    /**
-     * Get the channels the event should broadcast on.
-     *
-     * @return array<int, Channel>
-     */
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('channel-name'),
+            new PrivateChannel('private-user.' . $this->userId),
+        ];
+    }
+
+    public function broadcastAs(): string
+    {
+        return 'NewNotificationEvent';
+    }
+
+    public function broadcastWith(): array
+    {
+        return [
+            'notification' => [
+                'id' => $this->notification->id,
+                'title' => $this->notification->title,
+                'body' => $this->notification->body,
+                'type' => $this->notification->type,
+                'data' => $this->notification->data ?? [],
+                'created_at' => $this->notification->created_at?->toISOString(),
+            ],
+            'user_id' => $this->userId,
         ];
     }
 }

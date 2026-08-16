@@ -31,6 +31,10 @@ trait FiltersQuestionListings
 
     protected function applyQuestionListingFilters(Builder $query, Request $request, string $subjectColumn = 'subject', string $gradeColumn = 'school_grade'): Builder
     {
+        $query->where(function (Builder $statusQuery): void {
+            $statusQuery->where('status', 'published')->orWhereNull('status');
+        });
+
         $subjectVariants = $this->buildSubjectVariants($this->resolveListingSubject($request));
         $gradeVariants = $this->buildSchoolGradeVariants($this->resolveListingSchoolGrade($request));
 

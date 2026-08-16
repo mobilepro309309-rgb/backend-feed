@@ -6,7 +6,7 @@ use App\Http\Controllers\Api\Users\{UserController, UserProfileController};
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Posts\{CommentController, PostController};
 use App\Http\Controllers\Api\{InteractiveVideoController, LatestQuestionsController, QuizBatchController, QuizTransactionController, UserSelectionController};
-use App\Http\Controllers\Api\Admin\{AdminHomeController, AdminRoleController, AdminUsersController, AdminDeviceBanController, TeacherManagementController};
+use App\Http\Controllers\Api\Admin\{AdminHomeController, AdminRoleController, AdminUsersController, AdminDeviceBanController, TeacherManagementController, QuestionTypeSettingController};
 use App\Http\Controllers\Api\Location\{LocationController, NearbyStudentsController};
 use App\Http\Controllers\Api\Challenges\{CheatSheetController, CloudCapsuleChallengeController, ComparisonChallengeController, DailyChallengeController, FindTheBugChallengeController, LiveDuelChallengeController};
 use App\Http\Controllers\Api\Questions\{MultipleChoiceQuestionController, TrueFalseQuestionController};
@@ -20,6 +20,8 @@ $apiRoutes = function (): void {
     Route::post('/register', [AuthController::class, 'register'])->name('register');
     Route::get('/security/device-response/status', [\App\Http\Controllers\Api\Security\PendingDeviceLoginController::class, 'status']);
     Route::get('/locations', [LocationController::class, 'index']);
+    Route::get('/locations/governorates', [LocationController::class, 'governorates']);
+    Route::get('/locations/governorates/{governorate}/districts', [LocationController::class, 'districtsForGovernorate']);
 
     Route::get('/users/{id}/latest-posts', [LatestQuestionsController::class, 'getUserLatestPosts']);
     Route::get('/users/{id}/latest-questions', [LatestQuestionsController::class, 'getUserQuestions']);
@@ -112,6 +114,8 @@ $apiRoutes = function (): void {
         Route::get('/teacher/my-scopes', [TeacherManagementController::class, 'myScopes']);
         Route::get('/teacher/my-questions-by-category', [TeacherManagementController::class, 'getMyQuestionsByCategory']);
         Route::put('/teacher/my-questions/{type}/{id}', [TeacherManagementController::class, 'updateMyQuestion']);
+        Route::put('/teacher/my-questions/{type}/{id}/toggle-status', [TeacherManagementController::class, 'toggleMyQuestionStatus']);
+        Route::put('/admin/questions/{type}/{id}/toggle-status', [TeacherManagementController::class, 'toggleMyQuestionStatus']);
         Route::delete('/teacher/my-questions/{type}/{id}', [TeacherManagementController::class, 'deleteMyQuestion']);
         Route::get('/teacher/pending-questions', [\App\Http\Controllers\ChatController::class, 'getPendingQuestions']);
 
@@ -119,6 +123,7 @@ $apiRoutes = function (): void {
             Route::get('/', [TeacherManagementController::class, 'index']);
             Route::post('/assign-scope', [TeacherManagementController::class, 'assignScope']);
             Route::delete('/scopes/{id}', [TeacherManagementController::class, 'removeScope']);
+            Route::delete('/{user}', [TeacherManagementController::class, 'deleteTeacher']);
         });
 
         Route::get('/admin/users/lookup/{id}', [TeacherManagementController::class, 'lookupUser']);
@@ -137,6 +142,14 @@ $apiRoutes = function (): void {
         Route::delete('/devices/unban/{ban}', [AdminDeviceBanController::class, 'unbanDevice']);
         Route::get('/admin/devices/banned', [AdminDeviceBanController::class, 'getBannedDevices']);
         Route::get('/devices/banned', [AdminDeviceBanController::class, 'getBannedDevices']);
+
+        // Question Type Settings Management Routes
+        Route::get('/admin/question-settings', [QuestionTypeSettingController::class, 'index']);
+        Route::get('/admin/question-settings/{questionTypeSetting}', [QuestionTypeSettingController::class, 'show']);
+        Route::put('/admin/question-settings/{questionTypeSetting}', [QuestionTypeSettingController::class, 'update']);
+        Route::put('/admin/question-settings/type/{questionType}', [QuestionTypeSettingController::class, 'updateByType']);
+        Route::post('/admin/question-settings/bulk-update', [QuestionTypeSettingController::class, 'bulkUpdate']);
+        Route::post('/admin/question-settings/reset-defaults', [QuestionTypeSettingController::class, 'resetDefaults']);
 
         Route::get('/posts', [PostController::class, 'index']);
         Route::get('/posts/{post}', [PostController::class, 'show']);

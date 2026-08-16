@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Controller;
 use App\Models\Challenges\DailyChallenge;
 use App\Models\Message;
+use App\Models\QuestionExplanation;
 use App\Models\User;
 use App\Services\NotificationService;
 use App\Services\QuizAccessService;

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\QuestionTypeSetting;
 use App\Models\User;
 use App\Models\Wallet;
 use Illuminate\Support\Facades\Log;
@@ -9,13 +10,14 @@ use Illuminate\Support\Facades\Log;
 class QuizAccessService
 {
     /**
-     * Define quiz access rules mapping quiz types to their economic parameters.
+     * Fallback hardcoded rules (used when database records don't exist).
+     * These serve as the default values and ensure system stability if database is missing config.
      * Each rule contains:
      * - required_balance: minimum wallet balance to unlock
      * - entry_fee: cost to enter the quiz
      * - reward_points: points awarded for completion
      */
-    private const QUIZ_ACCESS_RULES = [
+    private const FALLBACK_QUIZ_ACCESS_RULES = [
         'multiple_choice' => [
             'required_balance' => 0,
             'entry_fee' => 0,
@@ -59,24 +61,137 @@ class QuizAccessService
     ];
 
     /**
-     * Get access rules for a specific quiz type.
+     * In-memory cache for question type settings (per request lifecycle).
+     * Stores all active settings to minimize database queries.
+     *
+     * @var array|null
+     */
+    private ?array $cachedSettings = null;
+
+    /**
+     * Load all active settings from database and cache them.
+     * Minimizes database queries within a single request lifecycle.
+     *
+     * @return array Associative array of question_type => {reward_points, entry_fee}
+     */
+    private function loadAndCacheSettings(): array
+    {
+        if ($this->cachedSettings !== null) {
+            return $this->cachedSettings;
+        }
+
+        try {
+            $this->cachedSettings = [];
+            $settings = QuestionTypeSetting::getAllActive();
+
+            foreach ($settings as $setting) {
+                $this->cachedSettings[$setting->question_type] = [
+                    'reward_points' => $setting->reward_points,
+                    'entry_fee' => $setting->entry_fee,
+                ];
+            }
+
+            return $this->cachedSettings;
+        } catch (\Exception $e) {
+            Log::error('Failed to load question type settings from database', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    /**
+     * Get the reward points value for a question type from database or fallback.
+     * First tries the database, then falls back to hardcoded values.
+     *
+     * @param string $quizType The quiz type
+     * @return int The reward points value
+     */
+    private function getRewardPointsForType(string $quizType): int
+    {
+        $cachedSettings = $this->loadAndCacheSettings();
+
+        if (isset($cachedSettings[$quizType])) {
+            return (int) $cachedSettings[$quizType]['reward_points'];
+        }
+
+        // Fallback to hardcoded values
+        if (isset(self::FALLBACK_QUIZ_ACCESS_RULES[$quizType])) {
+            return (int) self::FALLBACK_QUIZ_ACCESS_RULES[$quizType]['reward_points'];
+        }
+
+        return 0;
+    }
+
+    /**
+     * Get the entry fee for a question type from database or fallback.
+     * First tries the database, then falls back to hardcoded values.
+     *
+     * @param string $quizType The quiz type
+     * @return int The entry fee value
+     */
+    private function getEntryFeeForType(string $quizType): int
+    {
+        $cachedSettings = $this->loadAndCacheSettings();
+
+        if (isset($cachedSettings[$quizType])) {
+            return (int) $cachedSettings[$quizType]['entry_fee'];
+        }
+
+        // Fallback to hardcoded values
+        if (isset(self::FALLBACK_QUIZ_ACCESS_RULES[$quizType])) {
+            return (int) self::FALLBACK_QUIZ_ACCESS_RULES[$quizType]['entry_fee'];
+        }
+
+        return 0;
+    }
+
+    /**
+     * Get access rules for a specific quiz type (database-driven with fallback).
+     * Constructs the rules array dynamically using database values for reward_points and entry_fee
+     * and fallback constants for other fields.
      *
      * @param string $quizType The quiz type (e.g., 'live_duel', 'multiple_choice')
      * @return array|null The access rules array or null if quiz type doesn't exist
      */
     public function getAccessRules(string $quizType): ?array
     {
-        return self::QUIZ_ACCESS_RULES[$quizType] ?? null;
+        // Use fallback rules as base
+        if (!isset(self::FALLBACK_QUIZ_ACCESS_RULES[$quizType])) {
+            return null;
+        }
+
+        $fallbackRules = self::FALLBACK_QUIZ_ACCESS_RULES[$quizType];
+
+        // Get reward_points and entry_fee from database (with database fallback to hardcoded)
+        $rewardPoints = $this->getRewardPointsForType($quizType);
+        $entryFee = $this->getEntryFeeForType($quizType);
+
+        return [
+            'required_balance' => $fallbackRules['required_balance'],
+            'entry_fee' => $entryFee,
+            'reward_points' => $rewardPoints,
+        ];
     }
 
     /**
-     * Get all available access rules.
+     * Get all available access rules (database-driven with fallback).
      *
-     * @return array All defined access rules
+     * @return array All defined access rules with database-driven points values
      */
     public function getAllAccessRules(): array
     {
-        return self::QUIZ_ACCESS_RULES;
+        $allRules = [];
+
+        foreach (self::FALLBACK_QUIZ_ACCESS_RULES as $quizType => $fallbackRule) {
+            $rules = $this->getAccessRules($quizType);
+            if ($rules) {
+                $allRules[$quizType] = $rules;
+            }
+        }
+
+        return $allRules;
     }
 
     /**

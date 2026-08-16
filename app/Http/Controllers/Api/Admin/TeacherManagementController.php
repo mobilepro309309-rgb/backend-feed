@@ -46,9 +46,18 @@ class TeacherManagementController extends Controller
     public function index(Request $request)
     {
         $search = trim((string) $request->query('search', ''));
+        $subject = trim((string) $request->query('subject', ''));
+        $schoolGrade = trim((string) $request->query('school_grade', ''));
+        $userId = $request->query('user_id');
 
-        $query = User::query()
-            ->where(function ($q) use ($search) {
+        $query = User::query();
+
+        // Filter by user_id if provided
+        if ($userId !== null && $userId !== '') {
+            $query->where('id', (int) $userId);
+        } else {
+            // Default filtering for teachers if user_id not provided
+            $query->where(function ($q) use ($search) {
                 $q->where('role', 'teacher')
                     ->orWhereHas('teacherScopes');
 
@@ -59,8 +68,35 @@ class TeacherManagementController extends Controller
                             ->orWhere('phone', 'like', "%{$search}%" );
                     });
                 }
-            })
-            ->with('teacherScopes');
+            });
+        }
+
+        // Filter by subject if provided
+        if ($subject !== '') {
+            $query->whereHas('teacherScopes', function ($q) use ($subject) {
+                $q->where('subject', $subject);
+            });
+        }
+
+        // Filter by school_grade if provided
+        if ($schoolGrade !== '') {
+            $query->whereHas('teacherScopes', function ($q) use ($schoolGrade) {
+                $q->where('school_grade', $schoolGrade);
+            });
+        }
+
+        // Load teacherScopes with optional filtering
+        $query->with([
+            'teacherScopes' => function ($q) use ($subject, $schoolGrade) {
+                if ($subject !== '') {
+                    $q->where('subject', $subject);
+                }
+                if ($schoolGrade !== '') {
+                    $q->where('school_grade', $schoolGrade);
+                }
+            },
+            'address'
+        ]);
 
         $teachers = $query->orderBy('name')->get();
 
@@ -73,6 +109,15 @@ class TeacherManagementController extends Controller
                     'email' => $user->email,
                     'phone' => $user->phone,
                     'role' => $user->role,
+                    'school_grade' => $user->school_grade,
+                    'gender' => $user->gender,
+                    'address' => $user->address ? [
+                        'governorate' => $user->address->governorate,
+                        'city_or_center' => $user->address->city_or_center,
+                        'village_name' => $user->address->village_name,
+                        'latitude' => $user->address->latitude,
+                        'longitude' => $user->address->longitude,
+                    ] : null,
                     'teacher_scopes' => $user->teacherScopes->map(function (TeacherScope $scope) {
                         return [
                             'id' => $scope->id,
@@ -230,6 +275,76 @@ class TeacherManagementController extends Controller
         return response()->json([
             'success' => true,
             'items' => $items,
+        ]);
+    }
+
+    public function toggleMyQuestionStatus(Request $request, string $type, int $id)
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized',
+            ], 401);
+        }
+
+        $modelClass = $this->getModelClassForQuestionType($type);
+
+        if (! $modelClass) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid question type.',
+            ], 422);
+        }
+
+        $item = $modelClass::where('id', $id)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (! $item) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Question not found or unauthorized.',
+            ], 404);
+        }
+
+        $requestedStatus = $request->input('status');
+        $currentStatus = $item->status ?? 'draft';
+        $nextStatus = in_array($requestedStatus, ['draft', 'published'], true)
+            ? $requestedStatus
+            : ($currentStatus === 'published' ? 'draft' : 'published');
+
+        if (! in_array($nextStatus, ['draft', 'published'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid status value.',
+            ], 422);
+        }
+
+        try {
+            $item->status = $nextStatus;
+            $item->published_at = $nextStatus === 'published' ? ($item->published_at ?? now()) : null;
+            $item->save();
+        } catch (\Throwable $e) {
+            Log::error('[TeacherManagementController] Failed to toggle question status', [
+                'type' => $type,
+                'id' => $id,
+                'status' => $nextStatus,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update the question status.',
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $nextStatus === 'published' ? 'تم نشر السؤال بنجاح' : 'تم إلغاء نشر السؤال بنجاح',
+            'status' => $item->status,
+            'item' => $item,
         ]);
     }
 
@@ -470,15 +585,25 @@ class TeacherManagementController extends Controller
 
     protected function getModelClassForQuestionType(string $type): ?string
     {
+        $normalizedType = strtolower(trim((string) $type));
+
         return [
             'multiple_choice' => MultipleChoiceQuestion::class,
+            'multiple-choice' => MultipleChoiceQuestion::class,
             'true_false' => TrueFalseQuestion::class,
+            'true-false' => TrueFalseQuestion::class,
             'cloud_capsule' => CloudCapsuleChallenge::class,
+            'cloud-capsule' => CloudCapsuleChallenge::class,
             'daily_challenge' => DailyChallenge::class,
+            'daily-challenge' => DailyChallenge::class,
             'comparison' => ComparisonChallenge::class,
+            'comparison_card' => ComparisonChallenge::class,
+            'comparison-card' => ComparisonChallenge::class,
             'find_the_bug' => FindTheBugChallenge::class,
+            'find-the-bug' => FindTheBugChallenge::class,
             'live_duel' => LiveDuelChallenge::class,
-        ][$type] ?? null;
+            'live-duel' => LiveDuelChallenge::class,
+        ][$normalizedType] ?? null;
     }
 
     public function assignScope(Request $request)
@@ -529,12 +654,26 @@ class TeacherManagementController extends Controller
         $scope = TeacherScope::findOrFail($scopeId);
         $user = $scope->user;
 
+        Log::info('👨‍🏫 [TeacherScope] Removing scope', [
+            'scope_id' => $scope->id,
+            'user_id' => $user?->id,
+            'subject' => $scope->subject,
+            'grade' => $scope->school_grade,
+        ]);
+
         $scope->delete();
 
         if ($user) {
             $remainingScopes = $user->teacherScopes()->count();
             if ($remainingScopes === 0) {
+                $previousRole = $user->role;
                 $user->forceFill(['role' => 'user'])->save();
+                Log::info('👨‍🏫 [TeacherScope] Downgraded user role', [
+                    'user_id' => $user->id,
+                    'previous_role' => $previousRole,
+                    'new_role' => 'user',
+                    'reason' => 'no_remaining_scopes',
+                ]);
             }
         }
 
@@ -542,5 +681,50 @@ class TeacherManagementController extends Controller
             'status' => 'success',
             'message' => 'تم حذف صلاحية المادة بنجاح',
         ]);
+    }
+
+    public function deleteTeacher(Request $request, User $user)
+    {
+        Log::info('👨‍🏫 [TeacherManagement] Deleting teacher', [
+            'user_id' => $user->id,
+            'name' => $user->name,
+            'current_role' => $user->role,
+        ]);
+
+        try {
+            // Delete all teacher scopes
+            $scopeCount = $user->teacherScopes()->count();
+            $user->teacherScopes()->delete();
+
+            // Downgrade user role to 'user'
+            $previousRole = $user->role;
+            $user->forceFill(['role' => 'user'])->save();
+
+            Log::info('👨‍🏫 [TeacherManagement] Teacher deleted successfully', [
+                'user_id' => $user->id,
+                'scopes_deleted' => $scopeCount,
+                'previous_role' => $previousRole,
+                'new_role' => 'user',
+            ]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'تم حذف المدرس وصلاحياته بنجاح',
+                'data' => [
+                    'user_id' => $user->id,
+                    'scopes_deleted' => $scopeCount,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('👨‍🏫 [TeacherManagement] Failed to delete teacher', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'فشل حذف المدرس. يرجى المحاولة لاحقاً',
+            ], 500);
+        }
     }
 }

@@ -98,6 +98,14 @@ Broadcast::channel('private-chat.{chatId}', function ($user, $chatId) {
     return $isTeacherForChat;
 });
 
+Broadcast::channel('private-user.{userId}', function ($user, $userId) {
+    if (! $user) {
+        return false;
+    }
+
+    return (int) $user->id === (int) $userId;
+});
+
 Broadcast::channel('private-duel-user.{userId}', function ($user, $userId) {
     if (! $user) {
         return false;

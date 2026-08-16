@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\NewNotificationEvent;
+use App\Models\Notification;
 use App\Models\NotificationUser;
 use App\Models\User;
 use App\Models\UserDevice;
+use App\Services\FirebaseService;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -56,20 +59,8 @@ $deviceToken = $validated['fcm_token'];
                 $validated['device_type'] ?? null
             );
 
-            if (! $existingDevice) {
-                $this->notificationService->sendNotification(
-                    $user,
-                    'تنبيه أمني',
-                    'تم تسجيل الدخول إلى حسابك من هاتف جديد. هل أنت هذا الشخص؟',
-                    [
-                        'type' => 'security_login_alert',
-                        'source' => 'new_device_login',
-                        'user_id' => $user->id,
-                    ],
-                    $deviceToken
-                );
-            }
-
+            // Disabled intentionally: no automatic security login notification is created when a device token is stored.
+            // This prevents database rows from being inserted into notifications / notification_user for new device registrations.
             Log::info('[NotificationController@storeToken] device registered', ['user_id' => $user->id, 'device_id' => $device->id ?? null, 'fcm_token' => $deviceToken]);
 
                 return response()->json([
@@ -248,62 +239,283 @@ $deviceToken = $validated['fcm_token'];
 
     public function send(Request $request): JsonResponse
     {
+        Log::info('[NotificationController@send] incoming broadcast payload', [
+            'request' => $request->all(),
+            'headers' => [
+                'authorization' => $request->header('authorization'),
+            ],
+        ]);
+
         $validated = $request->validate([
             'user_id' => 'nullable|integer|exists:users,id',
             'title' => 'required|string',
             'body' => 'required|string',
             'type' => 'nullable|string',
             'data' => 'nullable|array',
+            'target_role' => 'nullable|string',
+            'target_grade' => 'nullable|string',
+            'school_grade' => 'nullable|string',
+            'audience' => 'nullable|string',
         ]);
 
         try {
-            $user = null;
+            $explicitUserId = isset($validated['user_id']) ? (int) $validated['user_id'] : null;
+            $targetRole = $this->normalizeTargetRole($validated['target_role'] ?? $validated['audience'] ?? null);
+            $targetGrade = $this->normalizeTargetGrade($validated['target_grade'] ?? $validated['school_grade'] ?? null);
 
-            if (! empty($validated['user_id'])) {
-                $user = User::findOrFail($validated['user_id']);
-            } else {
-                $user = $request->user();
-            }
-
-            if (! $user) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'User not provided.',
-                ], 422);
-            }
+            Log::info('[NotificationController@send] normalized filter values', [
+                'explicit_user_id' => $explicitUserId,
+                'target_role' => $targetRole,
+                'target_grade' => $targetGrade,
+            ]);
 
             $data = $validated['data'] ?? [];
-
             if (! empty($validated['type'])) {
                 $data['type'] = $validated['type'];
             }
 
-            $result = $this->notificationService->sendNotification(
-                $user,
-                $validated['title'],
-                $validated['body'],
-                $data
-            );
+            if ($targetRole !== null) {
+                $data['target_role'] = $targetRole;
+            }
+            if ($targetGrade !== null) {
+                $data['target_grade'] = $targetGrade;
+            }
 
-            $firebaseResults = $result['firebase'] ?? [];
-            $allDelivered = collect($firebaseResults)->every(function ($item) {
-                return isset($item['result']['success']) && $item['result']['success'] === true;
-            });
+            if ($explicitUserId !== null) {
+                $user = User::findOrFail($explicitUserId);
+                $result = $this->notificationService->sendNotification(
+                    $user,
+                    $validated['title'],
+                    $validated['body'],
+                    $data
+                );
+
+                $firebaseResults = $result['firebase'] ?? [];
+                $allDelivered = collect($firebaseResults)->every(function ($item) {
+                    return isset($item['result']['success']) && $item['result']['success'] === true;
+                });
+
+                return response()->json([
+                    'success' => $allDelivered,
+                    'message' => $allDelivered ? 'Notification processed successfully.' : 'Notification processed with partial or full delivery failure.',
+                    'count' => 1,
+                    'user_ids' => [$user->id],
+                    'data' => $result,
+                ], $allDelivered ? 200 : 207);
+            }
+
+            $query = User::query();
+
+            if ($targetRole !== null && $targetRole !== 'all') {
+                $query->where(function ($roleQuery) use ($targetRole) {
+                    $roleQuery->whereRaw('LOWER(role) = ?', [mb_strtolower($targetRole)])
+                        ->orWhereRaw('LOWER(role) = ?', [mb_strtolower(str_replace(['-', '_'], ' ', $targetRole))]);
+                });
+            }
+
+            $recipients = $query->get()->filter(function (User $user) use ($targetRole, $targetGrade) {
+                if ($targetRole !== null && $targetRole !== 'all' && ! $this->roleMatches($user->role, $targetRole)) {
+                    return false;
+                }
+
+                if ($targetGrade !== null && ! $this->gradeMatches($user->school_grade, $targetGrade)) {
+                    return false;
+                }
+
+                return true;
+            })->values();
+
+            if ($recipients->isEmpty()) {
+                $friendlyMessage = 'لا يوجد مستخدمون مطابّقون لهذه الفئة لإرسال الإشعار إليهم';
+
+                Log::warning('[NotificationController@send] no recipients matched broadcast filters', [
+                    'target_role' => $targetRole,
+                    'target_grade' => $targetGrade,
+                    'audience' => $validated['audience'] ?? null,
+                    'request' => $request->all(),
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $friendlyMessage,
+                    'count' => 0,
+                    'user_ids' => [],
+                ], 200);
+            }
+
+            $broadcastData = array_merge($data, [
+                'broadcast' => true,
+                'audience' => $targetRole ?? 'all',
+                'target_role' => $targetRole ?? 'all',
+                'target_grade' => $targetGrade ?? 'all',
+                'grade' => $targetGrade ?? 'all',
+                'source' => 'admin_broadcast',
+            ]);
+
+            $notification = Notification::create([
+                'title' => $validated['title'],
+                'body' => $validated['body'],
+                'type' => $broadcastData['type'] ?? 'broadcast',
+                'data' => $broadcastData,
+            ]);
+
+            $firebaseService = app(FirebaseService::class);
+            $broadcastDelivery = [];
+
+            foreach ($recipients as $recipient) {
+                $deviceTokens = UserDevice::where('user_id', $recipient->id)
+                    ->pluck('fcm_token')
+                    ->filter(fn ($token) => is_string($token) && trim($token) !== '')
+                    ->values()
+                    ->all();
+
+                foreach ($deviceTokens as $deviceToken) {
+                    try {
+                        $firebaseService->sendNotification(
+                            $deviceToken,
+                            $validated['title'],
+                            $validated['body'],
+                            $broadcastData
+                        );
+
+                        $broadcastDelivery[] = [
+                            'user_id' => $recipient->id,
+                            'device_token' => $deviceToken,
+                            'channel' => 'private-user.' . $recipient->id,
+                            'delivery' => 'fcm',
+                        ];
+                    } catch (\Throwable $e) {
+                        Log::warning('[NotificationController@send] FCM broadcast delivery failed', [
+                            'user_id' => $recipient->id,
+                            'error' => $e->getMessage(),
+                        ]);
+
+                        $broadcastDelivery[] = [
+                            'user_id' => $recipient->id,
+                            'device_token' => $deviceToken,
+                            'channel' => 'private-user.' . $recipient->id,
+                            'delivery' => 'fcm_failed',
+                            'error' => $e->getMessage(),
+                        ];
+                    }
+                }
+
+                try {
+                    broadcast(new NewNotificationEvent($notification, (int) $recipient->id));
+                    $broadcastDelivery[] = [
+                        'user_id' => $recipient->id,
+                        'channel' => 'private-user.' . $recipient->id,
+                        'delivery' => 'reverb',
+                    ];
+                } catch (\Throwable $e) {
+                    Log::warning('[NotificationController@send] Reverb broadcast failed', [
+                        'user_id' => $recipient->id,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    $broadcastDelivery[] = [
+                        'user_id' => $recipient->id,
+                        'channel' => 'private-user.' . $recipient->id,
+                        'delivery' => 'reverb_failed',
+                        'error' => $e->getMessage(),
+                    ];
+                }
+            }
 
             return response()->json([
-                'success' => $allDelivered,
-                'message' => $allDelivered ? 'Notification processed successfully.' : 'Notification processed with partial or full delivery failure.',
-                'data' => $result,
-            ], $allDelivered ? 200 : 207);
+                'success' => true,
+                'message' => 'Broadcast notification created successfully.',
+                'count' => 0,
+                'user_ids' => [],
+                'notification_id' => $notification->id,
+                'data' => [
+                    'notification' => $notification,
+                    'target_role' => $targetRole,
+                    'target_grade' => $targetGrade,
+                    'recipient_count' => $recipients->count(),
+                    'broadcast_delivery' => $broadcastDelivery,
+                ],
+            ], 200);
         } catch (\Throwable $e) {
             Log::error('Notification dispatch failed', [
                 'error' => $e->getMessage(),
+                'request' => $request->all(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Notification failed.',
+                'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    protected function normalizeTargetRole(?string $value): ?string
+    {
+        if ($value === null || trim((string) $value) === '' || strtolower(trim((string) $value)) === 'all') {
+            return null;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+        $normalized = str_replace(['-', '_'], ' ', $normalized);
+
+        $map = [
+            'student' => 'user',
+            'students' => 'user',
+            'user' => 'user',
+            'users' => 'user',
+            'teacher' => 'teacher',
+            'teachers' => 'teacher',
+            'main admin' => 'main-admin',
+            'main-admin' => 'main-admin',
+            'admin' => 'admin',
+            'reply questions admin' => 'reply_questions_admin',
+            'question post admin' => 'question_post_admin',
+            'financial admin' => 'financial_admin',
+            'technical support admin' => 'technical_support_admin',
+        ];
+
+        return $map[$normalized] ?? preg_replace('/\s+/', '-', $normalized);
+    }
+
+    protected function normalizeTargetGrade(?string $value): ?string
+    {
+        if ($value === null || trim((string) $value) === '' || strtolower(trim((string) $value)) === 'all') {
+            return null;
+        }
+
+        $normalized = User::normalizeSchoolGradeValue($value);
+
+        return $normalized !== null && $normalized !== '' ? (string) $normalized : trim((string) $value);
+    }
+
+    protected function roleMatches(?string $storedRole, string $targetRole): bool
+    {
+        if ($storedRole === null || $storedRole === '') {
+            return false;
+        }
+
+        $normalizedStored = strtolower(trim((string) $storedRole));
+        $normalizedStored = str_replace(['-', '_'], ' ', $normalizedStored);
+        $normalizedTarget = strtolower(trim((string) $targetRole));
+        $normalizedTarget = str_replace(['-', '_'], ' ', $normalizedTarget);
+
+        return $normalizedStored === $normalizedTarget || $normalizedStored === str_replace(' ', '-', $normalizedTarget);
+    }
+
+    protected function gradeMatches(?string $storedGrade, string $targetGrade): bool
+    {
+        if ($storedGrade === null || $storedGrade === '') {
+            return false;
+        }
+
+        $storedNormalized = User::normalizeSchoolGradeValue($storedGrade);
+        $targetNormalized = User::normalizeSchoolGradeValue($targetGrade);
+
+        if ($storedNormalized === null || $targetNormalized === null) {
+            return strtolower(trim((string) $storedGrade)) === strtolower(trim((string) $targetGrade));
+        }
+
+        return $storedNormalized === $targetNormalized;
     }
 }
