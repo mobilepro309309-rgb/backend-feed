@@ -270,6 +270,7 @@ class AdminRoleController extends Controller
             'gender' => $user->gender,
             'school_grade' => $user->school_grade,
             'grade' => $user->school_grade ?? $user->grade ?? $user->grade_level ?? $user->academic_year ?? $user->stage ?? null,
+            'referral_code' => $user->referral_code ?? null,
             'role_label' => $this->roleLabel($user->role),
         ];
     }

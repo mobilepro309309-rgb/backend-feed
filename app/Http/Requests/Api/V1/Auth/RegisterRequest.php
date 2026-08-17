@@ -17,6 +17,7 @@ class RegisterRequest extends BaseFormRequest
             'governorate' => ['nullable', 'string', 'max:255'],
             'district' => ['nullable', 'string', 'max:255'],
             'village' => ['nullable', 'string', 'max:255'],
+            'referral_code' => ['nullable', 'string', 'max:20', 'exists:users,referral_code'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'device_identifier' => ['nullable', 'string'],

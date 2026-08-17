@@ -37,6 +37,7 @@ class CloudCapsuleChallenge extends Model
         'subject',
         'school_grade',
         'term',
+        'unit_number',
         'intro_text',
         'file_url',
         'badge_text',
@@ -52,6 +53,7 @@ class CloudCapsuleChallenge extends Model
     protected function casts(): array
     {
         return [
+            'unit_number' => 'integer',
             'published_at' => 'datetime',
         ];
     }

@@ -23,6 +23,8 @@ class TrueFalseQuestionTest extends TestCase
             ->postJson('/api/true-false-questions', [
                 'title' => 'سؤال صح أم خطأ',
                 'subject' => 'علوم',
+                'school_grade' => '2',
+                'unit_number' => 5,
                 'prompt' => 'الأرض تدور حول الشمس.',
                 'correct_answer' => true,
                 'explanation' => 'شرح مختصر',
@@ -34,6 +36,8 @@ class TrueFalseQuestionTest extends TestCase
         $this->assertDatabaseHas('true_false_questions', [
             'title' => 'سؤال صح أم خطأ',
             'subject' => 'علوم',
+            'school_grade' => '2',
+            'unit_number' => 5,
             'user_id' => $user->id,
         ]);
     }

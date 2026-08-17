@@ -24,6 +24,8 @@ class MultipleChoiceQuestionTest extends TestCase
             ->postJson('/api/multiple-choice-questions', [
                 'title' => 'سؤال اختبار',
                 'subject' => 'علوم',
+                'school_grade' => '1',
+                'unit_number' => 3,
                 'question' => 'ما هو الكوكب الأحمر؟',
                 'options' => ['المريخ', 'الزهرة', 'الأرض', 'الزحل'],
                 'correct_index' => 0,
@@ -35,6 +37,8 @@ class MultipleChoiceQuestionTest extends TestCase
         $this->assertDatabaseHas('multiple_choice_questions', [
             'title' => 'سؤال اختبار',
             'subject' => 'علوم',
+            'school_grade' => '1',
+            'unit_number' => 3,
             'user_id' => $user->id,
         ]);
     }

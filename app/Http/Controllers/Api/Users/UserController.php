@@ -140,6 +140,7 @@ class UserController extends Controller
             'gender' => $user->gender,
             'school_grade' => $user->school_grade,
             'grade' => $user->school_grade ?? $user->grade ?? $user->grade_level ?? $user->academic_year ?? $user->stage ?? null,
+            'referral_code' => $user->referral_code ?? null,
             'location' => $address?->village_name ?? $address?->governorate ?? null,
             'latitude' => $address?->latitude,
             'longitude' => $address?->longitude,

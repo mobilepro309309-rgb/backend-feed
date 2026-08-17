@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Str;
 
 class User extends Authenticatable
 {
@@ -31,6 +32,29 @@ class User extends Authenticatable
     public function setSchoolGradeAttribute($value): void
     {
         $this->attributes['school_grade'] = static::normalizeSchoolGradeValue($value);
+    }
+
+    public static function generateUniqueReferralCode(?string $name = null): string
+    {
+        do {
+            $englishLetters = '';
+
+            if (! empty($name)) {
+                $englishLetters = preg_replace('/[^A-Za-z]/', '', strtoupper((string) $name));
+            }
+
+            if (is_string($englishLetters) && strlen($englishLetters) >= 2) {
+                $initials = substr($englishLetters, 0, min(3, strlen($englishLetters)));
+                $suffixLength = strlen($initials) === 3 ? 4 : 3;
+                $suffix = strtoupper(Str::random($suffixLength));
+                $code = 'QF' . $initials . $suffix;
+            } else {
+                $suffix = strtoupper(Str::random(5));
+                $code = 'QF' . $suffix;
+            }
+        } while (self::where('referral_code', $code)->exists());
+
+        return $code;
     }
 
     public static function normalizeSchoolGradeValue($value): ?string
@@ -104,6 +128,7 @@ class User extends Authenticatable
         'password',
         'is_online',
         'last_seen',
+        'referral_code',
     ];
 
     /**
@@ -238,6 +263,21 @@ class User extends Authenticatable
     public function shareRewardLogs(): HasMany
     {
         return $this->hasMany(ShareRewardLog::class);
+    }
+
+    public function referrals(): HasMany
+    {
+        return $this->hasMany(UserReferral::class, 'referrer_id');
+    }
+
+    public function referredBy(): HasOne
+    {
+        return $this->hasOne(UserReferral::class, 'referred_id');
+    }
+
+    public function referredUsers(): HasMany
+    {
+        return $this->hasMany(UserReferral::class, 'referrer_id');
     }
 
     public function hasScope($grade, $subject, $permission = 'can_answer')

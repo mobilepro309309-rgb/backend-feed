@@ -259,14 +259,46 @@ $deviceToken = $validated['fcm_token'];
         ]);
 
         try {
+            $authUser = $request->user();
             $explicitUserId = isset($validated['user_id']) ? (int) $validated['user_id'] : null;
             $targetRole = $this->normalizeTargetRole($validated['target_role'] ?? $validated['audience'] ?? null);
             $targetGrade = $this->normalizeTargetGrade($validated['target_grade'] ?? $validated['school_grade'] ?? null);
+
+            if ($authUser && strtolower((string) $authUser->role) === 'teacher') {
+                $authorizedGrades = $authUser->teacherScopes()
+                    ->pluck('school_grade')
+                    ->map(fn ($grade) => $this->normalizeTargetGrade((string) $grade))
+                    ->filter(fn ($grade) => $grade !== null && $grade !== '')
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                if (empty($authorizedGrades)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'لا توجد صلاحية لتحديد الصف للمدرس الحالي.',
+                    ], 403);
+                }
+
+                if ($targetGrade === null || strtolower((string) $targetGrade) === 'all') {
+                    $targetGrade = $authorizedGrades[0];
+                } elseif (! in_array($targetGrade, $authorizedGrades, true)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'لا يمكنك إرسال إشعار إلى صف خارج صلاحياتك التعليمية.',
+                        'authorized_grades' => $authorizedGrades,
+                    ], 403);
+                }
+
+                $validated['target_grade'] = $targetGrade;
+                $validated['school_grade'] = $targetGrade;
+            }
 
             Log::info('[NotificationController@send] normalized filter values', [
                 'explicit_user_id' => $explicitUserId,
                 'target_role' => $targetRole,
                 'target_grade' => $targetGrade,
+                'auth_user_role' => $authUser?->role,
             ]);
 
             $data = $validated['data'] ?? [];

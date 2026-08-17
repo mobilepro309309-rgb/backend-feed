@@ -70,8 +70,16 @@ class PostController extends Controller
             ], 401);
         }
 
+        $unitNumber = $request->query('unit_number', $request->input('unit_number', 'all'));
+        $resolvedUnitNumber = $unitNumber === null || $unitNumber === '' || strtolower(trim((string) $unitNumber)) === 'all'
+            ? null
+            : ((int) $unitNumber > 0 ? (int) $unitNumber : null);
+
         $posts = Post::query()
             ->where('status', 'published')
+            ->when($resolvedUnitNumber !== null, function ($query) use ($resolvedUnitNumber) {
+                $query->where('unit_number', $resolvedUnitNumber);
+            })
             // eager-load user so frontend receives the author inside each post
             ->with(['user' => function ($query) {
                 $query->select('id', 'name');
@@ -137,6 +145,7 @@ class PostController extends Controller
         $validated = $request->validate([
             'content' => ['nullable', 'string', 'required_without:attachments'],
             'subject' => ['required', 'string', 'max:120'],
+            'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
             'image_url' => ['nullable', 'string'],
             'attachments' => ['nullable', 'array', 'required_without:content'],
             'attachments.*.id' => ['nullable', 'string'],
@@ -156,6 +165,7 @@ class PostController extends Controller
             'user_id' => $user->id,
             'content' => $validated['content'],
             'subject' => $validated['subject'],
+            'unit_number' => isset($validated['unit_number']) && $validated['unit_number'] !== '' ? (int) $validated['unit_number'] : null,
             'image_url' => $validated['image_url'] ?? null,
             'attachments' => $validated['attachments'] ?? null,
             'status' => $validated['status'] ?? 'published',
@@ -166,6 +176,80 @@ class PostController extends Controller
             'message' => 'تم إنشاء المنشور بنجاح',
             'data' => $post->fresh()->load('user'),
         ], 201);
+    }
+
+    public function update(Request $request, Post $post)
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return response()->json([
+                'message' => 'المستخدم غير مصادق عليه',
+            ], 401);
+        }
+
+        $normalizedRole = mb_strtolower(trim((string) ($user->role ?? '')));
+        $canUpdate = $post->user_id === $user->id
+            || in_array($normalizedRole, ['admin', 'teacher', 'super-admin', 'moderator'], true);
+
+        if (! $canUpdate) {
+            return response()->json([
+                'message' => 'ليس لديك صلاحية تعديل هذا المنشور',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'content' => ['nullable', 'string'],
+            'subject' => ['nullable', 'string', 'max:120'],
+            'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'image_url' => ['nullable', 'string'],
+            'attachments' => ['nullable', 'array'],
+            'status' => ['nullable', 'in:draft,published'],
+        ]);
+
+        $post->update([
+            'content' => $validated['content'] ?? $post->content,
+            'subject' => $validated['subject'] ?? $post->subject,
+            'unit_number' => array_key_exists('unit_number', $validated) && $validated['unit_number'] !== ''
+                ? (int) $validated['unit_number']
+                : $post->unit_number,
+            'image_url' => $validated['image_url'] ?? $post->image_url,
+            'attachments' => $validated['attachments'] ?? $post->attachments,
+            'status' => $validated['status'] ?? $post->status,
+        ]);
+
+        return response()->json([
+            'message' => 'تم تعديل المنشور بنجاح',
+            'data' => $post->fresh()->load('user'),
+        ]);
+    }
+
+    public function destroy(Request $request, Post $post)
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return response()->json([
+                'message' => 'المستخدم غير مصادق عليه',
+            ], 401);
+        }
+
+        $normalizedRole = mb_strtolower(trim((string) ($user->role ?? '')));
+        $canDelete = $post->user_id === $user->id
+            || in_array($normalizedRole, ['admin', 'teacher', 'super-admin', 'moderator'], true);
+
+        if (! $canDelete) {
+            return response()->json([
+                'message' => 'ليس لديك صلاحية حذف هذا المنشور',
+            ], 403);
+        }
+
+        $post->delete();
+
+        return response()->json([
+            'message' => 'تم حذف المنشور بنجاح',
+            'data' => ['id' => $post->id],
+        ]);
     }
 
     public function vote(Request $request, Post $post)

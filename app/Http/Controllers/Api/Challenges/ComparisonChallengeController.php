@@ -162,6 +162,7 @@ class ComparisonChallengeController extends Controller
             'subject' => ['required', 'string', 'max:120'],
             'school_grade' => ['nullable', 'string'],
             'term' => ['nullable', 'in:1,2'],
+            'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
             'left_label' => ['nullable', 'string', 'max:80'],
             'right_label' => ['nullable', 'string', 'max:80'],
             'left_text' => ['required', 'string'],
@@ -175,6 +176,7 @@ class ComparisonChallengeController extends Controller
 
         $validated['school_grade'] = $request->input('school_grade', $user->school_grade ?? null);
         $validated['term'] = $request->input('term', $user->term ?? 1);
+        $validated['unit_number'] = $request->input('unit_number', $validated['unit_number'] ?? null);
 
         $challenge = ComparisonChallenge::create([
             'user_id' => $user->id,
@@ -182,6 +184,7 @@ class ComparisonChallengeController extends Controller
             'subject' => $validated['subject'],
             'school_grade' => $validated['school_grade'] ?? null,
             'term' => (int) ($validated['term'] ?? 1),
+            'unit_number' => isset($validated['unit_number']) && $validated['unit_number'] !== '' ? (int) $validated['unit_number'] : null,
             'left_label' => $validated['left_label'] ?? null,
             'right_label' => $validated['right_label'] ?? null,
             'left_text' => $validated['left_text'],
@@ -197,7 +200,7 @@ class ComparisonChallengeController extends Controller
 
         try {
             $comparisonGrade = (string) ($challenge->school_grade ?? '');
-            $recipients = User::where('role', 'user')
+            $recipients = User::query()
                 ->where('id', '!=', $challenge->user_id)
                 ->whereHas('devices')
                 ->when($comparisonGrade !== '', function ($query) use ($comparisonGrade) {

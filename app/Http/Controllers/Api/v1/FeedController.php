@@ -20,7 +20,11 @@ class FeedController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $user = $request->user();
-        $feedData = $this->feedService->getPaginatedFeed(15);
+        $rawUnitNumber = $request->query('unit_number', $request->input('unit_number', 'all'));
+        $unitNumber = (is_string($rawUnitNumber) && strtolower(trim($rawUnitNumber)) === 'all') ? null : ($rawUnitNumber !== null && $rawUnitNumber !== '' ? (int) $rawUnitNumber : null);
+        $subject = $request->query('subject', $request->input('subject', null));
+
+        $feedData = $this->feedService->getPaginatedFeed(15, $unitNumber, $subject);
 
         if ($user) {
             $postIds = $feedData->pluck('feedable')

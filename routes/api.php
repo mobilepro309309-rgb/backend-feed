@@ -6,7 +6,7 @@ use App\Http\Controllers\Api\Users\{UserController, UserProfileController};
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Posts\{CommentController, PostController};
 use App\Http\Controllers\Api\{InteractiveVideoController, LatestQuestionsController, QuizBatchController, QuizTransactionController, UserSelectionController};
-use App\Http\Controllers\Api\Admin\{AdminHomeController, AdminRoleController, AdminUsersController, AdminDeviceBanController, TeacherManagementController, QuestionTypeSettingController};
+use App\Http\Controllers\Api\Admin\{AdminHomeController, AdminRoleController, AdminUsersController, AdminDeviceBanController, TeacherManagementController, QuestionTypeSettingController, CurriculumUnitsController};
 use App\Http\Controllers\Api\Location\{LocationController, NearbyStudentsController};
 use App\Http\Controllers\Api\Challenges\{CheatSheetController, CloudCapsuleChallengeController, ComparisonChallengeController, DailyChallengeController, FindTheBugChallengeController, LiveDuelChallengeController};
 use App\Http\Controllers\Api\Questions\{MultipleChoiceQuestionController, TrueFalseQuestionController};
@@ -82,6 +82,7 @@ $apiRoutes = function (): void {
         Route::put('/user/profile', [UserProfileController::class, 'update']);
         Route::post('/wallet/top-up', [WalletController::class, 'topUp']);
         Route::post('/share/reward', [ShareRewardController::class, 'claimShareReward'])->middleware('auth:sanctum');
+        Route::post('/user/claim-whatsapp-reward', [ShareRewardController::class, 'claimWhatsappReward'])->middleware('auth:sanctum');
 
         // Quiz Transaction Routes - Gamified Quiz Progression System (Phase 1)
         Route::post('/quiz/unlock', [QuizTransactionController::class, 'unlock']);
@@ -151,9 +152,16 @@ $apiRoutes = function (): void {
         Route::post('/admin/question-settings/bulk-update', [QuestionTypeSettingController::class, 'bulkUpdate']);
         Route::post('/admin/question-settings/reset-defaults', [QuestionTypeSettingController::class, 'resetDefaults']);
 
+        Route::get('/admin/curriculum-units', [CurriculumUnitsController::class, 'index']);
+        Route::get('/admin/curriculum-units/{subjectUnit}', [CurriculumUnitsController::class, 'show']);
+        Route::post('/admin/curriculum-units', [CurriculumUnitsController::class, 'store']);
+        Route::put('/admin/curriculum-units/{subjectUnit}', [CurriculumUnitsController::class, 'update']);
+
         Route::get('/posts', [PostController::class, 'index']);
         Route::get('/posts/{post}', [PostController::class, 'show']);
         Route::post('/posts', [PostController::class, 'store']);
+        Route::put('/posts/{post}', [PostController::class, 'update']);
+        Route::delete('/posts/{post}', [PostController::class, 'destroy']);
         Route::post('/posts/{post}/vote', [PostController::class, 'vote']);
         Route::post('/posts/{post}/react', [PostController::class, 'react']);
         Route::delete('/posts/{post}/react', [PostController::class, 'removeReaction']);

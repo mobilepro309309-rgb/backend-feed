@@ -168,6 +168,7 @@ class FindTheBugChallengeController extends Controller
             'subject' => ['required', 'string', 'max:120'],
             'school_grade' => ['nullable', 'string'],
             'term' => ['nullable', 'in:1,2'],
+            'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
             'prompt' => ['nullable', 'string'],
             'options' => ['required', 'array', 'min:2'],
             'options.*' => ['nullable', 'string'],
@@ -180,6 +181,7 @@ class FindTheBugChallengeController extends Controller
 
         $validated['school_grade'] = $request->input('school_grade', $user->school_grade ?? null);
         $validated['term'] = $request->input('term', $user->term ?? 1);
+        $validated['unit_number'] = $request->input('unit_number', $validated['unit_number'] ?? null);
 
         $prompt = trim((string) ($validated['prompt'] ?? ''));
         $fileUrl = trim((string) ($validated['file_url'] ?? ''));
@@ -199,6 +201,7 @@ class FindTheBugChallengeController extends Controller
             'subject' => $validated['subject'],
             'school_grade' => $validated['school_grade'] ?? null,
             'term' => (int) ($validated['term'] ?? 1),
+            'unit_number' => isset($validated['unit_number']) && $validated['unit_number'] !== '' ? (int) $validated['unit_number'] : null,
             'prompt' => $prompt ?: null,
             'file_url' => $validated['file_url'] ?? null,
             'options' => array_values(array_map(fn($value) => (string) $value, $validated['options'])),
@@ -212,7 +215,7 @@ class FindTheBugChallengeController extends Controller
 
         try {
             $challengeGrade = (string) ($challenge->school_grade ?? '');
-            $recipients = User::where('role', 'user')
+            $recipients = User::query()
                 ->where('id', '!=', $challenge->user_id)
                 ->whereHas('devices')
                 ->when($challengeGrade !== '', function ($query) use ($challengeGrade) {

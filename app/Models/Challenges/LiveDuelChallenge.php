@@ -36,6 +36,7 @@ class LiveDuelChallenge extends Model
         'subject',
         'school_grade',
         'term',
+        'unit_number',
         'challenge_text',
         'file_url',
         'badge_text',
@@ -53,6 +54,7 @@ class LiveDuelChallenge extends Model
             'published_at' => 'datetime',
             'question_count' => 'integer',
             'seconds_per_question' => 'integer',
+            'unit_number' => 'integer',
         ];
     }
 

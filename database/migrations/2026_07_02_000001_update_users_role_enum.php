@@ -15,6 +15,10 @@ return new class extends Migration
             return;
         }
 
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         DB::statement("ALTER TABLE users MODIFY COLUMN role ENUM('main-admin', 'admin', 'reply_questions_admin', 'question_post_admin', 'financial_admin', 'technical_support_admin', 'user') DEFAULT 'user'");
     }
 

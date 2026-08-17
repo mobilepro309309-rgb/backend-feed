@@ -36,6 +36,7 @@ class TrueFalseQuestion extends Model
         'subject',
         'school_grade',
         'term',
+        'unit_number',
         'prompt',
         'file_url',
         'correct_answer',
@@ -49,6 +50,7 @@ class TrueFalseQuestion extends Model
     {
         return [
             'correct_answer' => 'boolean',
+            'unit_number' => 'integer',
             'published_at' => 'datetime',
         ];
     }

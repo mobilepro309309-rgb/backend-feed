@@ -36,6 +36,7 @@ class FindTheBugChallenge extends Model
         'subject',
         'school_grade',
         'term',
+        'unit_number',
         'prompt',
         'file_url',
         'options',
@@ -50,6 +51,7 @@ class FindTheBugChallenge extends Model
         return [
             'options' => 'array',
             'correct_answer_index' => 'integer',
+            'unit_number' => 'integer',
             'published_at' => 'datetime',
         ];
     }

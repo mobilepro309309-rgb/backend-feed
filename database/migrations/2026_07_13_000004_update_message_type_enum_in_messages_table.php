@@ -19,6 +19,10 @@ return new class extends Migration
             return;
         }
 
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         DB::statement("ALTER TABLE messages MODIFY COLUMN message_type ENUM('text', 'post', 'CheatSheetFlipCardQuiz', 'ComparisonCardQuiz', 'DailyChallengeQuiz', 'FindTheBugQuiz', 'LiveDuelCardQuiz', 'MultipleChoiceQuiz', 'TrueFalseQuiz') NOT NULL DEFAULT 'text'");
     }
 

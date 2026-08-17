@@ -29,6 +29,19 @@ trait FiltersQuestionListings
         return $fallbackGrade !== '' ? $fallbackGrade : null;
     }
 
+    protected function resolveListingUnitNumber(Request $request): ?int
+    {
+        $raw = $request->query('unit_number', $request->input('unit_number', 'all'));
+
+        if ($raw === null || $raw === '' || strtolower(trim((string) $raw)) === 'all') {
+            return null;
+        }
+
+        $value = (int) $raw;
+
+        return $value > 0 ? $value : null;
+    }
+
     protected function applyQuestionListingFilters(Builder $query, Request $request, string $subjectColumn = 'subject', string $gradeColumn = 'school_grade'): Builder
     {
         $query->where(function (Builder $statusQuery): void {
@@ -37,6 +50,7 @@ trait FiltersQuestionListings
 
         $subjectVariants = $this->buildSubjectVariants($this->resolveListingSubject($request));
         $gradeVariants = $this->buildSchoolGradeVariants($this->resolveListingSchoolGrade($request));
+        $unitNumber = $this->resolveListingUnitNumber($request);
 
         if ($subjectVariants !== []) {
             $query->where(function (Builder $subjectQuery) use ($subjectVariants, $subjectColumn): void {
@@ -72,6 +86,10 @@ trait FiltersQuestionListings
                     }
                 }
             });
+        }
+
+        if ($unitNumber !== null) {
+            $query->where('unit_number', $unitNumber);
         }
 
         return $query;

@@ -46,6 +46,38 @@ class CloudCapsuleChallengeTest extends TestCase
         ]);
     }
 
+    public function test_cloud_capsule_saves_unit_number(): void
+    {
+        $user = User::factory()->create([
+            'role' => 'question_post_admin',
+        ]);
+
+        $token = $user->createToken('test-token')->plainTextToken;
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/api/cloud-capsule-challenges', [
+                'title' => 'كبسولة وحدة اختبار',
+                'subject' => 'علوم',
+                'intro_text' => 'مقدمة اختبار',
+                'badge_text' => 'سر مختصر',
+                'reveal_text' => 'السر هنا',
+                'tip_text' => 'تلميح اختبار',
+                'mood_text' => 'مخفي داخل السحابة',
+                'reveal_label' => 'السر اللي ظهر',
+                'icon' => 'cloud',
+                'unit_number' => 4,
+                'status' => 'draft',
+            ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('cloud_capsule_challenges', [
+            'title' => 'كبسولة وحدة اختبار',
+            'subject' => 'علوم',
+            'user_id' => $user->id,
+            'unit_number' => 4,
+        ]);
+    }
+
     public function test_it_sends_push_notifications_to_registered_devices_when_capsule_is_created(): void
     {
         $admin = User::factory()->create([
@@ -66,7 +98,7 @@ class CloudCapsuleChallengeTest extends TestCase
             {
             }
 
-            public function sendNotification(User $user, string $title, string $body, array $data = []): array
+            public function sendNotification(User $user, string $title, string $body, array $data = [], ?string $excludeToken = null): array
             {
                 $this->calls[] = [
                     'user_id' => $user->id,

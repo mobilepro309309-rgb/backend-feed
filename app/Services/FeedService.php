@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
 
 class FeedService
 {
-    public function getPaginatedFeed(int $perPage = 10): LengthAwarePaginator
+    public function getPaginatedFeed(int $perPage = 10, ?int $unitNumber = null, ?string $subject = null): LengthAwarePaginator
     {
         $user = auth('sanctum')->user() ?? auth()->user();
 
@@ -99,6 +99,27 @@ class FeedService
                 });
             } else {
                 return $query->whereRaw('0 = 1')->paginate($perPage);
+            }
+        }
+
+        if ($unitNumber !== null && $unitNumber !== 'all' && $unitNumber !== '') {
+            $normalizedUnit = (int) $unitNumber;
+            if ($normalizedUnit > 0) {
+                $query->whereHasMorph('feedable', '*', function ($feedableQuery, $type) use ($normalizedUnit, $subject) {
+                    $instance = new $type();
+                    $table = $instance->getTable();
+
+                    if ($subject !== null && $subject !== '' && $subject !== 'all') {
+                        $normalizedSubject = strtolower(trim((string) $subject));
+                        if ($normalizedSubject !== '') {
+                            $feedableQuery->whereRaw('LOWER(TRIM(subject)) = ?', [$normalizedSubject]);
+                        }
+                    }
+
+                    if (Schema::hasColumn($table, 'unit_number')) {
+                        $feedableQuery->where('unit_number', $normalizedUnit);
+                    }
+                });
             }
         }
 

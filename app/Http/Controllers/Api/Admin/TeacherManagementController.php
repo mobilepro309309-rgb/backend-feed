@@ -218,6 +218,7 @@ class TeacherManagementController extends Controller
 
         $resolvedSubject = $this->resolveListingSubject($request);
         $resolvedGrade = $this->resolveListingSchoolGrade($request);
+        $resolvedUnit = $request->query('unit_number', $request->input('unit_number'));
         $subjectVariants = $this->buildSubjectVariants($resolvedSubject);
         $gradeVariants = $this->buildSchoolGradeVariants($resolvedGrade);
 
@@ -264,6 +265,10 @@ class TeacherManagementController extends Controller
                     }
                 }
             });
+        }
+
+        if ($resolvedUnit !== null && $resolvedUnit !== '') {
+            $query->where('unit_number', (int) $resolvedUnit);
         }
 
         $items = $query->get();
@@ -479,6 +484,7 @@ class TeacherManagementController extends Controller
                 'subject' => ['required', 'string', 'max:120'],
                 'school_grade' => ['nullable', 'string'],
                 'term' => ['nullable', 'in:1,2'],
+                'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
                 'question' => ['nullable', 'string'],
                 'options' => ['required', 'array', 'min:2'],
                 'options.*' => ['nullable', 'string'],
@@ -493,6 +499,7 @@ class TeacherManagementController extends Controller
                 'subject' => ['required', 'string', 'max:120'],
                 'school_grade' => ['nullable', 'string'],
                 'term' => ['nullable', 'in:1,2'],
+                'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
                 'prompt' => ['nullable', 'string'],
                 'correct_answer' => ['required', 'boolean'],
                 'explanation' => ['nullable', 'string'],
@@ -506,6 +513,7 @@ class TeacherManagementController extends Controller
                 'subject' => ['required', 'string', 'max:120'],
                 'school_grade' => ['nullable', 'string'],
                 'term' => ['nullable', 'in:1,2'],
+                'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
                 'prompt' => ['nullable', 'string'],
                 'options' => ['required', 'array', 'min:2'],
                 'options.*' => ['nullable', 'string'],
@@ -522,6 +530,7 @@ class TeacherManagementController extends Controller
                 'subject' => ['required', 'string', 'max:120'],
                 'school_grade' => ['nullable', 'string'],
                 'term' => ['nullable', 'in:1,2'],
+                'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
                 'left_label' => ['nullable', 'string', 'max:80'],
                 'right_label' => ['nullable', 'string', 'max:80'],
                 'left_text' => ['required', 'string'],
@@ -537,6 +546,7 @@ class TeacherManagementController extends Controller
                 'subject' => ['required', 'string', 'max:120'],
                 'school_grade' => ['nullable', 'string'],
                 'term' => ['nullable', 'in:1,2'],
+                'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
                 'prompt' => ['nullable', 'string'],
                 'options' => ['required', 'array', 'min:2'],
                 'options.*' => ['nullable', 'string'],
@@ -551,6 +561,7 @@ class TeacherManagementController extends Controller
                 'subject' => ['required', 'string', 'max:120'],
                 'school_grade' => ['nullable', 'string'],
                 'term' => ['nullable', 'in:1,2'],
+                'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
                 'intro_text' => ['nullable', 'string'],
                 'reveal_text' => ['required', 'string'],
                 'tip_text' => ['nullable', 'string'],
@@ -567,6 +578,7 @@ class TeacherManagementController extends Controller
                 'subject' => ['required', 'string', 'max:120'],
                 'school_grade' => ['nullable', 'string'],
                 'term' => ['nullable', 'in:1,2'],
+                'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
                 'challenge_text' => ['nullable', 'string'],
                 'badge_text' => ['nullable', 'string', 'max:80'],
                 'file_url' => ['nullable', 'string', 'max:2048'],

@@ -8,6 +8,7 @@ use App\Http\Requests\Api\V1\Auth\RegisterRequest;
 use App\Models\PendingDeviceLogin;
 use App\Models\User;
 use App\Models\UserDevice;
+use App\Models\UserReferral;
 use App\Models\Users\UserAddress;
 use App\Services\GeocodingService;
 use App\Services\NotificationService;
@@ -162,14 +163,36 @@ class AuthController extends Controller
             }
         }
 
-        $user = DB::transaction(function () use ($validated, $phone): User {
+        $referralCodeInput = trim((string) ($validated['referral_code'] ?? ''));
+        $referrer = null;
+
+        if ($referralCodeInput !== '') {
+            $referrer = User::where('referral_code', strtoupper($referralCodeInput))->first();
+
+            if (! $referrer) {
+                throw ValidationException::withMessages([
+                    'referral_code' => ['رمز الإحالة غير موجود أو غير صالح'],
+                ]);
+            }
+        }
+
+        $user = DB::transaction(function () use ($validated, $phone, $referralCodeInput, $referrer): User {
             $user = User::create([
                 'name' => $validated['name'],
                 'phone' => $phone,
                 'password' => Hash::make($validated['password']),
                 'gender' => $validated['gender'] ?? null,
                 'school_grade' => $validated['school_grade'] ?? null,
+                'referral_code' => User::generateUniqueReferralCode($validated['name'] ?? null),
             ]);
+
+            if ($referrer && $referrer->id !== $user->id) {
+                UserReferral::create([
+                    'referrer_id' => $referrer->id,
+                    'referred_id' => $user->id,
+                    'points_awarded' => 0,
+                ]);
+            }
 
             $addressData = [
                 'user_id' => $user->id,
@@ -274,6 +297,7 @@ class AuthController extends Controller
         $profile = $user->profile()->first();
         $avatarUrl = $profile?->avatar_url ?? $profile?->avatar ?? null;
         $walletBalance = (float) ($user->wallet?->balance ?? 0);
+        $referralsCount = (int) $user->referrals()->count();
 
         return [
             'id' => $user->id,
@@ -284,6 +308,10 @@ class AuthController extends Controller
             'gender' => $user->gender,
             'school_grade' => $user->school_grade ?? null,
             'grade' => $user->school_grade ?? $user->grade ?? $user->grade_level ?? $user->academic_year ?? $user->stage ?? null,
+            'referral_code' => $user->referral_code ?? null,
+            'referred_count' => $referralsCount,
+            'referrals_count' => $referralsCount,
+            'referral_count' => $referralsCount,
             'avatar_url' => $avatarUrl,
             'avatar' => $avatarUrl,
             'profile_image' => $avatarUrl,

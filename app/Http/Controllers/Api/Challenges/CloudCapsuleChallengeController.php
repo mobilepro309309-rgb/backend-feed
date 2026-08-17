@@ -88,6 +88,7 @@ class CloudCapsuleChallengeController extends Controller
             'subject' => ['required', 'string', 'max:120'],
             'school_grade' => ['nullable', 'string'],
             'term' => ['nullable', 'in:1,2'],
+            'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
             'intro_text' => ['nullable', 'string'],
             'file_url' => ['nullable', 'string', 'max:2048'],
             'explanation_video_url' => ['nullable', 'string', 'max:2048'],
@@ -102,6 +103,7 @@ class CloudCapsuleChallengeController extends Controller
 
         $validated['school_grade'] = $request->input('school_grade', $user->school_grade ?? null);
         $validated['term'] = $request->input('term', $user->term ?? 1);
+        $validated['unit_number'] = $request->input('unit_number', $validated['unit_number'] ?? null);
 
         $challenge = new CloudCapsuleChallenge();
         $challenge->user_id = $user->id;
@@ -109,6 +111,7 @@ class CloudCapsuleChallengeController extends Controller
         $challenge->subject = $validated['subject'];
         $challenge->school_grade = $validated['school_grade'] ?? null;
         $challenge->term = (int) ($validated['term'] ?? 1);
+        $challenge->unit_number = isset($validated['unit_number']) && $validated['unit_number'] !== '' ? (int) $validated['unit_number'] : null;
         $challenge->intro_text = $validated['intro_text'] ?? null;
         $challenge->file_url = $validated['file_url'] ?? null;
         $challenge->badge_text = $validated['badge_text'] ?? null;
@@ -125,7 +128,7 @@ class CloudCapsuleChallengeController extends Controller
 
         try {
             $capsuleGrade = (string) ($challenge->school_grade ?? '');
-            $recipients = User::where('role', 'user')
+            $recipients = User::query()
                 ->where('id', '!=', $challenge->user_id)
                 ->whereHas('devices')
                 ->when($capsuleGrade !== '', function ($query) use ($capsuleGrade) {

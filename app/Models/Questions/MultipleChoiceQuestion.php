@@ -33,6 +33,7 @@ class MultipleChoiceQuestion extends Model
         'subject',
         'school_grade',
         'term',
+        'unit_number',
         'question',
         'file_url',
         'options',
@@ -47,6 +48,7 @@ class MultipleChoiceQuestion extends Model
         return [
             'options' => 'array',
             'correct_index' => 'integer',
+            'unit_number' => 'integer',
             'published_at' => 'datetime',
         ];
     }

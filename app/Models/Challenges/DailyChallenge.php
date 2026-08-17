@@ -36,6 +36,7 @@ class DailyChallenge extends Model
         'subject',
         'school_grade',
         'term',
+        'unit_number',
         'prompt',
         'file_url',
         'options',
@@ -52,6 +53,7 @@ class DailyChallenge extends Model
         return [
             'options' => 'array',
             'correct_answer_index' => 'integer',
+            'unit_number' => 'integer',
             'expires_in_hours' => 'integer',
             'published_at' => 'datetime',
         ];

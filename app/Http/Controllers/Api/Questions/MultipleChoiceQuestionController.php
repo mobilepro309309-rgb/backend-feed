@@ -177,6 +177,7 @@ class MultipleChoiceQuestionController extends Controller
             'subject' => ['required', 'string', 'max:120'],
             'school_grade' => ['nullable', 'string'],
             'term' => ['nullable', 'in:1,2'],
+            'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
             'question' => ['nullable', 'string'],
             'options' => ['required', 'array', 'min:2'],
             'options.*' => ['nullable', 'string'],
@@ -189,6 +190,12 @@ class MultipleChoiceQuestionController extends Controller
 
         $validated['school_grade'] = $request->input('school_grade', $user->school_grade ?? null);
         $validated['term'] = $request->input('term', $user->term ?? 1);
+        $validated['unit_number'] = $request->input('unit_number', $validated['unit_number'] ?? null);
+
+        \Log::debug('MultipleChoiceQuestionController - Received unit_number from request', [
+            'unit_number_from_input' => $request->input('unit_number'),
+            'unit_number_validated' => $validated['unit_number'] ?? null,
+        ]);
 
         $questionText = trim((string) ($validated['question'] ?? ''));
         $fileUrl = trim((string) ($validated['file_url'] ?? ''));
@@ -208,6 +215,7 @@ class MultipleChoiceQuestionController extends Controller
             'subject' => $validated['subject'],
             'school_grade' => $validated['school_grade'] ?? null,
             'term' => (int) ($validated['term'] ?? 1),
+            'unit_number' => isset($validated['unit_number']) && $validated['unit_number'] !== '' ? (int) $validated['unit_number'] : null,
             'question' => $questionText ?: null,
             'file_url' => $validated['file_url'] ?? null,
             'options' => array_values(array_map(fn($value) => (string) $value, $validated['options'])),
@@ -215,6 +223,11 @@ class MultipleChoiceQuestionController extends Controller
             'badge_text' => $validated['badge_text'] ?? null,
             'status' => $validated['status'] ?? 'draft',
             'published_at' => ($validated['status'] ?? 'draft') === 'published' ? now() : null,
+        ]);
+
+        \Log::debug('MultipleChoiceQuestionController - Question created with unit_number', [
+            'question_id' => $question->id,
+            'unit_number_created' => $question->unit_number,
         ]);
 
         QuestionExplanation::upsertForQuestion(
@@ -225,8 +238,7 @@ class MultipleChoiceQuestionController extends Controller
 
         try {
             $questionGrade = (string) ($question->school_grade ?? '');
-            $recipients = User::where('role', 'user')
-                ->where('id', '!=', $question->user_id)
+            $recipients = User::where('id', '!=', $question->user_id)
                 ->whereHas('devices')
                 ->when($questionGrade !== '', function ($query) use ($questionGrade) {
                     $query->where(function ($gradeQuery) use ($questionGrade) {

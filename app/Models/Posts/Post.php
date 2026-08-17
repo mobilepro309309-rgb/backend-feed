@@ -34,6 +34,7 @@ class Post extends Model
         'user_id',
         'content',
         'subject',
+        'unit_number',
         'image_url',
         'attachments',
         'status',
@@ -50,6 +51,7 @@ class Post extends Model
         return [
             'attachments' => 'array',
             'published_at' => 'datetime',
+            'unit_number' => 'integer',
         ];
     }
 

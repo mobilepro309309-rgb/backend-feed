@@ -36,6 +36,7 @@ class ComparisonChallenge extends Model
         'subject',
         'school_grade',
         'term',
+        'unit_number',
         'left_label',
         'right_label',
         'left_text',
@@ -50,6 +51,7 @@ class ComparisonChallenge extends Model
     protected function casts(): array
     {
         return [
+            'unit_number' => 'integer',
             'published_at' => 'datetime',
         ];
     }
