@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Users;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
@@ -83,6 +84,49 @@ class UserController extends Controller
     {
         return response()->json([
             'user' => $this->serializeUser($request->user()),
+        ]);
+    }
+
+    public function ping(Request $request)
+    {
+        $user = $request->user();
+
+        $user->markOnline();
+
+        $activeUserIds = User::query()
+            ->where('is_online', true)
+            ->orWhere('last_seen', '>=', now()->subMinutes(2))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+
+        return response()->json([
+            'status' => 'online',
+            'online' => true,
+            'last_seen' => $user->last_seen?->toISOString(),
+            'active_user_ids' => $activeUserIds,
+            'user' => [
+                'id' => $user->id,
+                'is_online' => $user->isOnlineNow(),
+            ],
+        ]);
+    }
+
+    public function onlineUsers(Request $request)
+    {
+        $activeUserIds = User::query()
+            ->where('is_online', true)
+            ->orWhere('last_seen', '>=', now()->subMinutes(2))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+
+        return response()->json([
+            'status' => 'success',
+            'active_user_ids' => $activeUserIds,
+            'count' => count($activeUserIds),
         ]);
     }
 

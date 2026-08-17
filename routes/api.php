@@ -70,6 +70,8 @@ $apiRoutes = function (): void {
         Route::post('/chats/{chatId}/typing', [\App\Http\Controllers\ChatController::class, 'broadcastTyping']);
         Route::get('/chats/{chatId}/typing', [\App\Http\Controllers\ChatController::class, 'getTypingStatus']);
         Route::get('/me', [AuthController::class, 'me']);
+        Route::get('/online-users', [UserController::class, 'onlineUsers']);
+        Route::post('/user/ping', [UserController::class, 'ping']);
         Route::post('/logout', [AuthController::class, 'logout']);
 
         // Store device push token for authenticated user

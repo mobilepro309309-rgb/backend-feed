@@ -13,6 +13,19 @@ Broadcast::channel('chat.status', function ($user) {
     ];
 });
 
+Broadcast::channel('presence-online-users', function ($user) {
+    if (! $user) {
+        return false;
+    }
+
+    return [
+        'id' => $user->id,
+        'name' => $user->name,
+        'role' => $user->role,
+        'school_grade' => $user->school_grade,
+    ];
+});
+
 Broadcast::channel('presence-global', function ($user) {
     if (! $user) {
         return false;

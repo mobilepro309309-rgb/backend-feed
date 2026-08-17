@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class User extends Authenticatable
@@ -327,11 +328,50 @@ class User extends Authenticatable
         return $role === 'admin' || $role === 'super_admin';
     }
 
+    public function onlineCacheKey(): string
+    {
+        return 'user-online-' . $this->getKey();
+    }
+
+    public function isOnlineNow(): bool
+    {
+        if (Cache::has($this->onlineCacheKey())) {
+            return true;
+        }
+
+        if ($this->is_online === true) {
+            return true;
+        }
+
+        if (! $this->last_seen) {
+            return false;
+        }
+
+        return $this->last_seen->greaterThanOrEqualTo(now()->subMinutes(2));
+    }
+
+    public function markOnline(): void
+    {
+        $this->forceFill([
+            'is_online' => true,
+            'last_seen' => now(),
+        ])->saveQuietly();
+
+        Cache::put($this->onlineCacheKey(), true, now()->addMinutes(2));
+    }
+
     public function setPresence(bool $isOnline): void
     {
         $this->forceFill([
             'is_online' => $isOnline,
-            'last_seen' => $isOnline ? null : now(),
+            'last_seen' => now(),
         ])->saveQuietly();
+
+        if ($isOnline) {
+            Cache::put($this->onlineCacheKey(), true, now()->addMinutes(2));
+            return;
+        }
+
+        Cache::forget($this->onlineCacheKey());
     }
 }
