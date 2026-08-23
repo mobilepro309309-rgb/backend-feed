@@ -106,6 +106,21 @@ class LiveDuelChallengeController extends Controller
             $query = User::query()
                 ->where('id', '!=', $currentUser->id);
 
+            $query->whereExists(function ($friendshipQuery) use ($currentUser, $userTable) {
+                $friendshipQuery
+                    ->select(DB::raw('1'))
+                    ->from('friendships')
+                    ->where('status', 'accepted')
+                    ->where(function ($query) use ($currentUser) {
+                        $query->where('sender_id', $currentUser->id)
+                            ->orWhere('receiver_id', $currentUser->id);
+                    })
+                    ->where(function ($query) use ($userTable) {
+                        $query->whereColumn('sender_id', $userTable . '.id')
+                            ->orWhereColumn('receiver_id', $userTable . '.id');
+                    });
+            });
+
             if ($hasRoleColumn) {
                 $query->where('role', 'user');
             }

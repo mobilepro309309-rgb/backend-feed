@@ -67,10 +67,6 @@ class UserProfileController extends Controller
             $profile->save();
         }
 
-        if (isset($data['theme_mode'])) {
-            $request->user()->forceFill(['theme_mode' => $data['theme_mode']])->save();
-        }
-
         return response()->json([
             'message' => 'تم تحديث الملف الشخصي بنجاح',
             'profile' => $this->serializeProfile($profile->fresh()),

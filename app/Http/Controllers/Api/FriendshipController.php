@@ -25,8 +25,47 @@ class FriendshipController extends Controller
         }
 
         $type = $request->query('type', 'colleagues');
-        if (! in_array($type, ['colleagues', 'nearby'], true)) {
+        if (! in_array($type, ['colleagues', 'nearby', 'teachers'], true)) {
             return response()->json(['message' => 'Invalid type parameter.'], 422);
+        }
+
+        if ($type === 'teachers') {
+            $teacherFriendships = Friendship::query()
+                ->where('status', 'accepted')
+                ->where('teacher', 1)
+                ->where(function ($query) use ($user) {
+                    $query->where('sender_id', $user->id)
+                        ->orWhere('receiver_id', $user->id);
+                })
+                ->get();
+
+            $teacherMeta = $teacherFriendships->mapWithKeys(function (Friendship $friendship) use ($user) {
+                $teacherId = $friendship->sender_id === $user->id
+                    ? $friendship->receiver_id
+                    : $friendship->sender_id;
+
+                return [$teacherId => $friendship];
+            });
+
+            $teachers = User::with('address')
+                ->whereIn('id', $teacherMeta->keys()->all())
+                ->get(['id', 'name', 'email', 'phone', 'school_grade'])
+                ->map(function (User $teacher) use ($teacherMeta, $user) {
+                    $friendship = $teacherMeta[$teacher->id];
+                    $chatId = $friendship->chat_id ?? $this->ensureFriendshipChat($friendship);
+
+                    return array_merge($teacher->toArray(), [
+                        'friendship_status' => 'accepted',
+                        'chat_id' => $chatId,
+                        'status' => 'accepted',
+                        'teacher' => 1,
+                    ]);
+                });
+
+            return response()->json([
+                'type' => 'teachers',
+                'data' => $teachers,
+            ], 200);
         }
 
         if ($type === 'nearby') {
@@ -130,6 +169,7 @@ class FriendshipController extends Controller
         }
 
         $friendships = Friendship::query()
+            ->where('teacher', 0)
             ->where(function ($query) use ($user) {
                 $query->where('status', 'accepted')
                     ->where(function ($query) use ($user) {

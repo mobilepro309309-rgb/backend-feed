@@ -6,6 +6,15 @@ use App\Http\Requests\Api\V1\Core\BaseFormRequest;
 
 class RegisterRequest extends BaseFormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'name' => strip_tags(trim((string) $this->input('name', ''))),
+            'phone' => trim((string) $this->input('phone', '')),
+            'referral_code' => strtoupper(trim((string) $this->input('referral_code', ''))),
+        ]);
+    }
+
     public function rules(): array
     {
         return [

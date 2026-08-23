@@ -16,8 +16,8 @@ use App\Http\Controllers\{KashierController, NotificationController, SavedPostsC
 Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
 $apiRoutes = function (): void {
-    Route::post('/login', [AuthController::class, 'login'])->name('login');
-    Route::post('/register', [AuthController::class, 'register'])->name('register');
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:auth')->name('login');
+    Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:auth')->name('register');
     Route::get('/security/device-response/status', [\App\Http\Controllers\Api\Security\PendingDeviceLoginController::class, 'status']);
     Route::get('/locations', [LocationController::class, 'index']);
     Route::get('/locations/governorates', [LocationController::class, 'governorates']);
@@ -137,6 +137,8 @@ $apiRoutes = function (): void {
         Route::put('/admin/users/{user}', [AdminUsersController::class, 'update']);
         Route::delete('/admin/users/{user}', [AdminUsersController::class, 'destroy']);
         Route::get('/admin/posts', [AdminHomeController::class, 'getPosts']);
+        Route::get('/admin/pending-posts', [AdminHomeController::class, 'pendingPosts']);
+        Route::post('/admin/posts/{post}/moderate', [AdminHomeController::class, 'moderatePost'])->middleware('throttle:moderation');
 
         // Explicit device ban route definitions to match the mobile app calls.
         Route::post('/admin/devices/ban', [AdminDeviceBanController::class, 'banDevice']);
@@ -161,7 +163,7 @@ $apiRoutes = function (): void {
 
         Route::get('/posts', [PostController::class, 'index']);
         Route::get('/posts/{post}', [PostController::class, 'show']);
-        Route::post('/posts', [PostController::class, 'store']);
+        Route::post('/posts', [PostController::class, 'store'])->middleware('throttle:post-create');
         Route::put('/posts/{post}', [PostController::class, 'update']);
         Route::delete('/posts/{post}', [PostController::class, 'destroy']);
         Route::post('/posts/{post}/vote', [PostController::class, 'vote']);
@@ -172,8 +174,10 @@ $apiRoutes = function (): void {
         Route::post('/storage/private-file-url', [\App\Http\Controllers\Api\StorageController::class, 'getPrivateFileUrl']);
 
         // Comments System Routes
+        Route::post('/comments/block', [CommentController::class, 'block'])->middleware('throttle:moderation');
         Route::get('/posts/{post}/comments', [CommentController::class, 'index']);
         Route::post('/posts/{post}/comments', [CommentController::class, 'store']);
+        Route::delete('/posts/{post}/comments/{comment}', [CommentController::class, 'destroy']);
 
         // Live Duel Engine Core Routes & Aliases
         Route::get('/live-duel-challenges', [LiveDuelChallengeController::class, 'index']);

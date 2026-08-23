@@ -55,6 +55,20 @@ class InteractiveVideoController extends Controller
             });
         }
 
+        if ($request->filled('subject')) {
+            $subject = trim((string) $request->input('subject'));
+            if ($subject !== '') {
+                $videosQuery->where('subject', $subject);
+            }
+        }
+
+        if ($request->filled('unit_number')) {
+            $unitNumber = (int) $request->input('unit_number');
+            if ($unitNumber > 0) {
+                $videosQuery->where('unit_number', $unitNumber);
+            }
+        }
+
         $videos = $videosQuery
             ->latest('created_at')
             ->get();
@@ -69,6 +83,8 @@ class InteractiveVideoController extends Controller
             'youtube_url' => ['required', 'string', 'url', 'max:2048'],
             'subject' => ['nullable', 'string', 'max:120'],
             'school_grade' => ['nullable', 'string', 'max:120'],
+            'term' => ['nullable', 'string', 'max:120'],
+            'unit_number' => ['nullable', 'integer', 'min:1', 'max:255'],
             'number_of_questions' => ['required', 'integer', 'min:0'],
             'questions' => ['required', 'array', 'min:1'],
             'questions.*.question_text' => ['nullable', 'string'],
@@ -105,6 +121,8 @@ class InteractiveVideoController extends Controller
                 'youtube_url' => $validated['youtube_url'],
                 'subject' => $validated['subject'] ?? null,
                 'school_grade' => $validated['school_grade'] ?? null,
+                'term' => $validated['term'] ?? null,
+                'unit_number' => $validated['unit_number'] ?? null,
                 'number_of_questions' => $validated['number_of_questions'],
             ]);
 

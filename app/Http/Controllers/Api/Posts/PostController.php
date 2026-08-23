@@ -3,13 +3,17 @@
 namespace App\Http\Controllers\Api\Posts;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\V1\Posts\StorePostRequest;
 use App\Models\PostVote;
 use App\Models\Posts\Post;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Services\FeedCacheService;
 
 class PostController extends Controller
 {
+    public function __construct(private readonly FeedCacheService $feedCache) {}
+
     private function rejectVideoUploadForRegularUsers(Request $request, array $attachments = []): ?\Illuminate\Http\JsonResponse
     {
         $user = $request->user();
@@ -75,7 +79,13 @@ class PostController extends Controller
             ? null
             : ((int) $unitNumber > 0 ? (int) $unitNumber : null);
 
-        $posts = Post::query()
+        $cacheKey = 'approved-posts:' . sha1(implode('|', [
+            $user->id,
+            $resolvedUnitNumber ?? 'all',
+            $request->query('cursor', ''),
+        ]));
+
+        $posts = $this->feedCache->remember($cacheKey, 30, fn () => Post::query()
             ->where('status', 'published')
             ->when($resolvedUnitNumber !== null, function ($query) use ($resolvedUnitNumber) {
                 $query->where('unit_number', $resolvedUnitNumber);
@@ -84,15 +94,11 @@ class PostController extends Controller
             ->with(['user' => function ($query) {
                 $query->select('id', 'name');
             }])
+            ->withCount(['reactions', 'allComments'])
             ->orderByDesc('id')
-            ->cursorPaginate(10);
+            ->cursorPaginate(10));
 
         $items = $posts->getCollection()->map(function (Post $post) use ($user) {
-            // Calculate likes dynamically from post_reactions table
-            $likesCount = DB::table('post_reactions')
-                ->where('post_id', $post->id)
-                ->count();
-
             // Get the authenticated user's reaction type (if any)
             $userReaction = null;
             if ($user) {
@@ -110,8 +116,10 @@ class PostController extends Controller
                 'attachments' => $post->attachments,
                 'status' => $post->status,
                 'published_at' => $post->published_at,
-                'likes' => $likesCount,
-                'comments' => 0,
+                'likes' => (int) $post->reactions_count,
+                'comments' => (int) $post->all_comments_count,
+                'comments_count' => (int) $post->all_comments_count,
+                'all_comments_count' => (int) $post->all_comments_count,
                 'shares' => 0,
                 'user_reaction' => $userReaction,
                 'created_at' => $post->created_at,
@@ -132,7 +140,7 @@ class PostController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    public function store(StorePostRequest $request)
     {
         $user = $request->user();
 
@@ -142,35 +150,25 @@ class PostController extends Controller
             ], 401);
         }
 
-        $validated = $request->validate([
-            'content' => ['nullable', 'string', 'required_without:attachments'],
-            'subject' => ['required', 'string', 'max:120'],
-            'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
-            'image_url' => ['nullable', 'string'],
-            'attachments' => ['nullable', 'array', 'required_without:content'],
-            'attachments.*.id' => ['nullable', 'string'],
-            'attachments.*.name' => ['nullable', 'string'],
-            'attachments.*.uri' => ['nullable', 'string'],
-            'attachments.*.mimeType' => ['nullable', 'string'],
-            'attachments.*.size' => ['nullable', 'integer'],
-            'status' => ['nullable', 'in:draft,published'],
-        ]);
+        $validated = $request->validated();
 
         $videoRestrictionResponse = $this->rejectVideoUploadForRegularUsers($request, $validated['attachments'] ?? []);
         if ($videoRestrictionResponse) {
             return $videoRestrictionResponse;
         }
 
-        $post = Post::create([
+        $postData = [
             'user_id' => $user->id,
-            'content' => $validated['content'],
+            'content' => $validated['content'] ?? '',
             'subject' => $validated['subject'],
             'unit_number' => isset($validated['unit_number']) && $validated['unit_number'] !== '' ? (int) $validated['unit_number'] : null,
             'image_url' => $validated['image_url'] ?? null,
             'attachments' => $validated['attachments'] ?? null,
-            'status' => $validated['status'] ?? 'published',
-            'published_at' => ($validated['status'] ?? 'published') === 'published' ? now() : null,
-        ]);
+            'status' => 'pending',
+            'published_at' => null,
+        ];
+
+        $post = Post::create($postData);
 
         return response()->json([
             'message' => 'تم إنشاء المنشور بنجاح',
@@ -391,6 +389,8 @@ class PostController extends Controller
                 'published_at' => $post->published_at,
                 'likes' => $likesCount,
                 'comments' => $post->comments,
+                'comments_count' => $post->comments,
+                'all_comments_count' => $post->comments,
                 'shares' => $post->shares,
                 'user_reaction' => $userReaction,
                 'created_at' => $post->created_at,

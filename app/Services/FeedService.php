@@ -9,6 +9,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class FeedService
 {
@@ -66,15 +67,23 @@ class FeedService
             'normalized_grade' => $normalizedUserGrade,
         ]);
 
+        $cacheKey = 'feed:' . sha1(implode('|', [
+            $user->id,
+            $normalizedUserGrade,
+            $perPage,
+            $unitNumber ?? 'all',
+            strtolower(trim((string) $subject)),
+        ]));
+
+        return app(FeedCacheService::class)->remember($cacheKey, 30, function () use ($user, $userGradeRaw, $normalizedUserGrade, $unitNumber, $subject, $perPage): LengthAwarePaginator {
         $query = Feed::query()
-            ->where(function ($q) {
-                $q->where('status', 'published')
-                    ->orWhereNull('status');
-            })
-            ->with(['feedable' => function ($query) {
-                $query->where('status', 'published')
-                    ->orWhereNull('status')
-                    ->with(['user']);
+            ->where('status', 'published')
+            ->with(['feedable' => function (MorphTo $morphTo): void {
+                $morphTo->morphWith([
+                    Post::class => ['user'],
+                ])->morphWithCount([
+                    Post::class => ['reactions', 'allComments'],
+                ]);
             }]);
 
         if (!$user->isAdmin()) {
@@ -152,6 +161,7 @@ class FeedService
         }
 
         return $feed;
+        });
     }
 
     protected function normalizeGrade(?string $grade): ?string

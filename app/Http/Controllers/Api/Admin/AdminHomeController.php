@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
+use App\Http\Requests\Api\V1\Posts\ModeratePostRequest;
 use App\Models\Friendship;
 use App\Models\Posts\Post;
 use App\Models\Questions\MultipleChoiceQuestion;
@@ -398,8 +399,8 @@ class AdminHomeController extends Controller
                 'image_url' => $post->image_url,
                 'status' => $post->status,
                 'created_at' => $post->created_at?->toISOString(),
-                'likes' => $post->likes,
-                'comments' => $post->comments,
+                'likes' => (int) ($post->reactions_count ?? 0),
+                'comments' => (int) ($post->all_comments_count ?? 0),
                 'shares' => $post->shares,
                 'user' => $post->user ? [
                     'id' => $post->user->id,
@@ -428,6 +429,174 @@ class AdminHomeController extends Controller
             'total' => $posts->count(),
             'posts' => $posts,
         ]);
+    }
+
+    public function pendingPosts(Request $request)
+    {
+        $user = $request->user();
+        $role = strtolower((string) preg_replace('/[\s_-]+/', '-', trim((string) ($user->role ?? ''))));
+        $isMainAdmin = in_array($role, ['main-admin', 'admin', 'super-admin'], true) || (bool) $user->is_main_admin;
+
+        if (! $isMainAdmin && $role !== 'teacher') {
+            return response()->json(['message' => 'غير مصرح لك بمراجعة المنشورات'], 403);
+        }
+
+        $query = Post::query()
+            ->where('status', 'pending')
+            ->with(['user:id,name,role,school_grade,gender'])
+            ->withCount(['reactions', 'allComments'])
+            ->orderByDesc('created_at');
+
+        $availableGrades = collect([
+            ['key' => '1', 'label' => 'الأول الإعدادي'],
+            ['key' => '2', 'label' => 'الثاني الإعدادي'],
+            ['key' => '3', 'label' => 'الثالث الإعدادي'],
+        ]);
+
+        if ($isMainAdmin) {
+            $allowedGrades = $availableGrades->pluck('key')->all();
+            $availableGrades = $availableGrades->values()->all();
+        } elseif ($role === 'teacher') {
+            $allowedGrades = TeacherScope::query()
+                ->where('user_id', $user->id)
+                ->pluck('school_grade')
+                ->map(fn ($grade) => TeacherScope::normalizeGradeValue($grade))
+                ->filter(fn ($grade) => $grade !== null && $grade !== '')
+                ->unique()
+                ->values()
+                ->all();
+
+            $availableGrades = collect($availableGrades)
+                ->filter(fn ($grade) => in_array($grade['key'], $allowedGrades, true))
+                ->values()
+                ->all();
+
+            if ($allowedGrades === []) {
+                return response()->json([
+                    'message' => 'لا توجد درجات دراسية مخصصة لهذا المدرس',
+                    'data' => [],
+                    'posts' => [],
+                    'available_grades' => [],
+                    'meta' => ['current_page' => 1, 'last_page' => 1, 'total' => 0],
+                ]);
+            }
+
+            $query->whereHas('user', function ($userQuery) use ($allowedGrades) {
+                $userQuery->where(function ($gradeQuery) use ($allowedGrades) {
+                    foreach ($allowedGrades as $index => $grade) {
+                        $clause = $this->getGradeNormalizationClause('users.school_grade', (string) $grade);
+                        $index === 0 ? $gradeQuery->whereRaw($clause) : $gradeQuery->orWhereRaw($clause);
+                    }
+                });
+            });
+        } else {
+            $allowedGrades = [];
+        }
+
+        $requestedGrade = $this->resolveGradeFilter($request->query('school_grade', $request->query('grade_id')));
+        if ($requestedGrade !== null && in_array($requestedGrade, $allowedGrades, true)) {
+            $query->whereHas('user', function ($userQuery) use ($requestedGrade) {
+                $userQuery->whereRaw($this->getGradeNormalizationClause('users.school_grade', $requestedGrade));
+            });
+        } elseif ($requestedGrade !== null) {
+            $query->whereRaw('0 = 1');
+        }
+
+        return $this->pendingPostsResponse($query, $request, $availableGrades);
+    }
+
+    private function pendingPostsResponse($query, Request $request, array $availableGrades = [])
+    {
+        $paginator = $query->paginate((int) min(max((int) $request->query('per_page', 15), 1), 50));
+        $posts = collect($paginator->items())->map(fn (Post $post) => [
+            'id' => $post->id,
+            'content' => $post->content,
+            'subject' => $post->subject,
+            'unit_number' => $post->unit_number,
+            'image_url' => $post->image_url,
+            'attachments' => $post->attachments,
+            'status' => $post->status,
+            'created_at' => $post->created_at?->toISOString(),
+            'user' => $post->user ? [
+                'id' => $post->user->id,
+                'name' => $post->user->name,
+                'role' => $post->user->role,
+                'school_grade' => $post->user->school_grade,
+                'gender' => $post->user->gender,
+            ] : null,
+        ])->values();
+
+        return response()->json([
+            'message' => 'تم جلب المنشورات قيد المراجعة بنجاح',
+            'data' => $posts,
+            'posts' => $posts,
+            'available_grades' => $availableGrades,
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+            ],
+        ]);
+    }
+
+    public function moderatePost(ModeratePostRequest $request, Post $post)
+    {
+        $user = $request->user();
+        $role = strtolower((string) preg_replace('/[\s_-]+/', '-', trim((string) ($user->role ?? ''))));
+        $isMainAdmin = in_array($role, ['main-admin', 'admin', 'super-admin'], true) || (bool) $user->is_main_admin;
+
+        if (! $isMainAdmin && $role !== 'teacher') {
+            return response()->json(['message' => 'غير مصرح لك بمراجعة المنشورات'], 403);
+        }
+
+        if ($post->status !== 'pending') {
+            return response()->json(['message' => 'هذا المنشور ليس قيد المراجعة'], 422);
+        }
+
+        if (! $isMainAdmin) {
+            $allowedGrades = TeacherScope::query()
+                ->where('user_id', $user->id)
+                ->pluck('school_grade')
+                ->map(fn ($grade) => TeacherScope::normalizeGradeValue($grade))
+                ->filter(fn ($grade) => $grade !== null && $grade !== '')
+                ->unique()
+                ->values()
+                ->all();
+
+            $postUserGrade = TeacherScope::normalizeGradeValue($post->user?->school_grade);
+            if ($postUserGrade === null || ! in_array($postUserGrade, $allowedGrades, true)) {
+                return response()->json(['message' => 'هذا المنشور خارج نطاق درجاتك الدراسية'], 403);
+            }
+        }
+
+        $action = strtolower(trim((string) $request->input('action', $request->input('status', ''))));
+
+        if ($action === 'publish' || $action === 'published' || $action === 'approve') {
+            $post->update([
+                'status' => 'published',
+                'published_at' => now(),
+            ]);
+
+            return response()->json([
+                'message' => 'تمت الموافقة على المنشور ونشره بنجاح',
+                'data' => $post->fresh()->load('user'),
+            ]);
+        }
+
+        if ($action === 'reject' || $action === 'rejected' || $action === 'delete') {
+            $post->delete();
+
+            return response()->json([
+                'message' => 'تم رفض المنشور وحذفه بنجاح',
+                'post_id' => $post->id,
+                'status' => 'rejected',
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'الإجراء غير صالح. استخدم approve أو reject.',
+        ], 422);
     }
 
     protected function resolveGradeFilter(mixed $value): ?string

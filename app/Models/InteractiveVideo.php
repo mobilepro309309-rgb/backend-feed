@@ -9,7 +9,16 @@ class InteractiveVideo extends Model
 {
     use HasFactory;
 
-    protected $guarded = [];
+    protected $fillable = [
+        'user_id',
+        'title',
+        'youtube_url',
+        'subject',
+        'school_grade',
+        'term',
+        'unit_number',
+        'number_of_questions',
+    ];
 
     public function user()
     {

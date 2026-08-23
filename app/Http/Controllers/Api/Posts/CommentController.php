@@ -7,8 +7,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Comments\Comment;
 use App\Models\Posts\Post;
 use App\Models\User;
+use App\Models\UserBlock;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class CommentController extends Controller
 {
@@ -100,9 +102,13 @@ class CommentController extends Controller
             return $this->formatCommentForResponse($comment);
         });
 
+        $totalComments = $post->allComments()->count();
+
         return response()->json([
             'data' => $transformedComments,
-            'total' => $comments->count(),
+            'total' => $totalComments,
+            'comments_count' => $totalComments,
+            'all_comments_count' => $totalComments,
         ]);
     }
 
@@ -143,6 +149,18 @@ class CommentController extends Controller
         }
 
         $post->loadMissing('user');
+
+        $isBlocked = UserBlock::query()
+            ->where('user_id', $post->user_id)
+            ->where('blocked_user_id', $user->id)
+            ->exists();
+
+        if ($isBlocked) {
+            return response()->json([
+                'message' => "You are blocked from commenting on this user's posts",
+            ], 403);
+        }
+
         $authorGender = $this->normalizeGender($post->user?->gender);
         $userGender = $this->normalizeGender($user->gender);
 
@@ -266,6 +284,93 @@ class CommentController extends Controller
         return response()->json([
             'message' => 'تم إنشاء التعليق بنجاح',
             'data' => $formattedComment,
+        ], 201);
+    }
+
+    /**
+     * Delete a comment authored by the authenticated user.
+     * DELETE /api/posts/{post}/comments/{comment}
+     */
+    public function destroy(Request $request, Post $post, Comment $comment)
+    {
+        $user = $request->user();
+
+        if ((int) $comment->post_id !== (int) $post->id) {
+            return response()->json(['message' => 'التعليق لا ينتمي إلى هذا المنشور'], 404);
+        }
+
+        if ((int) $comment->user_id !== (int) $user->id) {
+            return response()->json(['message' => 'لا يمكنك حذف تعليق شخص آخر'], 403);
+        }
+
+        $comment->delete();
+
+        return response()->json([
+            'message' => 'تم حذف التعليق بنجاح',
+            'comment_id' => $comment->id,
+        ]);
+    }
+
+    /**
+     * Block a user from commenting on the authenticated user's posts.
+     * POST /api/comments/block
+     */
+    public function block(Request $request)
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'blocked_user_id' => ['required', 'integer', 'exists:users,id'],
+            'comment_id' => ['nullable', 'integer', 'exists:post_comments,id'],
+        ]);
+
+        $blockedUserId = (int) $validated['blocked_user_id'];
+
+        if ($blockedUserId === (int) $user->id) {
+            return response()->json([
+                'message' => 'You cannot block yourself',
+            ], 422);
+        }
+
+        $result = DB::transaction(function () use ($user, $blockedUserId, $validated): array {
+            $deletedCommentId = null;
+
+            if (! empty($validated['comment_id'])) {
+                $comment = Comment::query()
+                    ->lockForUpdate()
+                    ->find($validated['comment_id']);
+
+                if (! $comment) {
+                    abort(404, 'The comment was not found');
+                }
+
+                if ((int) $comment->post?->user_id !== (int) $user->id) {
+                    abort(403, 'You can only remove comments from your own posts');
+                }
+
+                if ((int) $comment->user_id !== $blockedUserId) {
+                    abort(422, 'The comment does not belong to the blocked user');
+                }
+
+                $deletedCommentId = $comment->id;
+                $comment->delete();
+            }
+
+            $block = UserBlock::query()->firstOrCreate([
+                'user_id' => $user->id,
+                'blocked_user_id' => $blockedUserId,
+            ]);
+
+            return [
+                'block' => $block,
+                'deleted_comment_id' => $deletedCommentId,
+            ];
+        });
+
+        return response()->json([
+            'message' => 'User blocked from commenting on your posts',
+            'blocked_user_id' => $blockedUserId,
+            'deleted_comment_id' => $result['deleted_comment_id'],
         ], 201);
     }
 

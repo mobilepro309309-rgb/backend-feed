@@ -72,7 +72,7 @@ class AuthController extends Controller
             ->exists();
 
         if ($existingDevice && $existingDevice->trusted) {
-            $tokenResult = $user->createToken('auth_token');
+            $tokenResult = $user->createToken('auth_token', ['api:access']);
             $accessToken = $tokenResult->accessToken;
 
             $existingDevice->update([
@@ -89,7 +89,7 @@ class AuthController extends Controller
         }
 
         if (! $hasTrustedDevice) {
-            $tokenResult = $user->createToken('auth_token');
+            $tokenResult = $user->createToken('auth_token', ['api:access']);
             $accessToken = $tokenResult->accessToken;
 
             $device = UserDevice::updateOrCreate(
@@ -222,7 +222,7 @@ class AuthController extends Controller
         });
 
         return response()->json([
-            'token' => $user->createToken('auth_token')->plainTextToken,
+            'token' => $user->createToken('auth_token', ['api:access'])->plainTextToken,
             'user' => $this->serializeUser($user),
             'message' => 'تم إنشاء الحساب بنجاح',
         ], 201);
@@ -296,6 +296,7 @@ class AuthController extends Controller
     {
         $profile = $user->profile()->first();
         $avatarUrl = $profile?->avatar_url ?? $profile?->avatar ?? null;
+        $themeMode = $profile?->theme_mode ?? 'light';
         $walletBalance = (float) ($user->wallet?->balance ?? 0);
         $referralsCount = (int) $user->referrals()->count();
 
@@ -316,6 +317,14 @@ class AuthController extends Controller
             'avatar' => $avatarUrl,
             'profile_image' => $avatarUrl,
             'imageUrl' => $avatarUrl,
+            'theme_mode' => $themeMode,
+            'profile' => [
+                'theme_mode' => $themeMode,
+                'avatar_url' => $avatarUrl,
+                'avatar' => $avatarUrl,
+                'profile_image' => $avatarUrl,
+                'imageUrl' => $avatarUrl,
+            ],
             'wallet' => [
                 'balance' => $walletBalance,
             ],

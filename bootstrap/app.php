@@ -13,7 +13,13 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->prepend(\Illuminate\Http\Middleware\HandleCors::class);
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->render(function (\Illuminate\Http\Exceptions\ThrottleRequestsException $exception, \Illuminate\Http\Request $request) {
+            return response()->json([
+                'message' => 'تم تجاوز عدد الطلبات المسموح. حاول مرة أخرى بعد قليل.',
+                'retry_after' => (int) ($exception->getHeaders()['Retry-After'] ?? 60),
+            ], 429, $exception->getHeaders());
+        });
     })->create();

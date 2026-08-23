@@ -8,6 +8,7 @@ use App\Models\Comments\Comment;
 use App\Models\Feed;
 use App\Models\PostVote;
 use App\Models\User;
+use App\Services\FeedCacheService;
 use App\Traits\SyncsToFeed;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -28,6 +29,13 @@ class Post extends Model
                 ->where('feedable_id', $item->id)
                 ->delete();
         });
+
+        static::saved(function (self $item): void {
+            app(FeedCacheService::class)->flush();
+        });
+        static::deleted(function (self $item): void {
+            app(FeedCacheService::class)->flush();
+        });
     }
 
     protected $fillable = [
@@ -44,7 +52,11 @@ class Post extends Model
         'downvotes_count',
     ];
 
-    protected $appends = ['likes', 'comments', 'shares'];
+    protected $attributes = [
+        'status' => 'pending',
+    ];
+
+    protected $appends = ['shares'];
 
     protected function casts(): array
     {
