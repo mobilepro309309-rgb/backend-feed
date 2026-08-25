@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Posts\StorePostRequest;
 use App\Models\PostVote;
 use App\Models\Posts\Post;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Services\FeedCacheService;
@@ -79,21 +80,26 @@ class PostController extends Controller
             ? null
             : ((int) $unitNumber > 0 ? (int) $unitNumber : null);
 
-        $cacheKey = 'approved-posts:' . sha1(implode('|', [
+        $cacheKey = 'approved-posts:v2:' . sha1(implode('|', [
             $user->id,
+            $user->stage_id ?? 'none',
+            $user->grade_id ?? 'none',
+            $user->track_id ?? 'none',
+            $user->specialized_subject_id ?? 'none',
             $resolvedUnitNumber ?? 'all',
             $request->query('cursor', ''),
         ]));
 
         $posts = $this->feedCache->remember($cacheKey, 30, fn () => Post::query()
-            ->where('status', 'published')
+            ->where(function ($query) use ($user): void {
+                $query->where('status', 'published')
+                    ->orWhere('user_id', $user->id);
+            })
+            ->when(! $user->isAdmin(), fn ($query) => $this->applyEducationalFilter($query, $user))
             ->when($resolvedUnitNumber !== null, function ($query) use ($resolvedUnitNumber) {
                 $query->where('unit_number', $resolvedUnitNumber);
             })
-            // eager-load user so frontend receives the author inside each post
-            ->with(['user' => function ($query) {
-                $query->select('id', 'name');
-            }])
+            ->with(['user.stage', 'user.grade', 'user.track', 'user.specializedSubject'])
             ->withCount(['reactions', 'allComments'])
             ->orderByDesc('id')
             ->cursorPaginate(10));
@@ -127,6 +133,15 @@ class PostController extends Controller
                 'user' => $post->user ? [
                     'id' => $post->user->id,
                     'name' => $post->user->name,
+                    'stage_id' => $post->user->stage_id,
+                    'grade_id' => $post->user->grade_id,
+                    'track_id' => $post->user->track_id,
+                    'specialized_subject_id' => $post->user->specialized_subject_id,
+                    'education_system' => $post->user->education_system,
+                    'stage' => $post->user->stage,
+                    'grade' => $post->user->grade,
+                    'track' => $post->user->track,
+                    'specialized_subject' => $post->user->specializedSubject,
                 ] : null,
             ];
         });
@@ -138,6 +153,33 @@ class PostController extends Controller
                 'prev_cursor' => $posts->previousCursor()?->encode(),
             ],
         ]);
+    }
+
+    private function applyEducationalFilter($query, User $user)
+    {
+        $educationColumns = ['stage_id', 'grade_id', 'track_id', 'specialized_subject_id'];
+        $hasNewEducationData = collect($educationColumns)->contains(fn (string $column): bool => $user->{$column} !== null);
+
+        return $query->where(function ($visibilityQuery) use ($user, $educationColumns, $hasNewEducationData): void {
+            $visibilityQuery->where('user_id', $user->id)
+                ->orWhere(function ($educationalQuery) use ($user, $educationColumns, $hasNewEducationData): void {
+                    $educationalQuery->whereHas('user', function ($authorQuery) use ($user, $educationColumns, $hasNewEducationData): void {
+            if (! $hasNewEducationData) {
+                $authorQuery->where(function ($gradeQuery) use ($user): void {
+                    $gradeQuery->where('school_grade', $user->school_grade)
+                        ->orWhere('school_grade', (int) $user->school_grade);
+                });
+
+                return;
+            }
+
+            foreach ($educationColumns as $column) {
+                $value = $user->{$column};
+                $value === null ? $authorQuery->whereNull($column) : $authorQuery->where($column, $value);
+            }
+                    });
+                });
+        });
     }
 
     public function store(StorePostRequest $request)

@@ -175,6 +175,15 @@ class FeedResource extends JsonResource
                     'gender' => $feedable->user->gender ?? null,
                     'school_grade' => $feedable->user->school_grade ?? null,
                     'grade' => $feedable->user->school_grade ?? null,
+                    'stage_id' => $feedable->user->stage_id ?? null,
+                    'grade_id' => $feedable->user->grade_id ?? null,
+                    'track_id' => $feedable->user->track_id ?? null,
+                    'specialized_subject_id' => $feedable->user->specialized_subject_id ?? null,
+                    'education_system' => $feedable->user->education_system ?? 'general',
+                    'stage' => $feedable->user->stage ?? null,
+                    'educational_grade' => $feedable->user->grade ?? null,
+                    'track' => $feedable->user->track ?? null,
+                    'specialized_subject' => $feedable->user->specializedSubject ?? null,
                 ];
             }
         }

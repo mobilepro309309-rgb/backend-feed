@@ -20,6 +20,7 @@ use App\Models\ShareRewardLog;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Facades\Cache;
@@ -122,6 +123,12 @@ class User extends Authenticatable
         'role',
         'school_grade',
         'gender',
+        'stage_id',
+        'grade_id',
+        'track_id',
+        'specialized_subject_id',
+        'education_system',
+        'city_or_address',
         'location',
         'latitude',
         'longitude',
@@ -155,6 +162,12 @@ class User extends Authenticatable
             'password' => 'hashed',
             'school_grade' => 'string',
             'gender' => 'string',
+            'stage_id' => 'integer',
+            'grade_id' => 'integer',
+            'track_id' => 'integer',
+            'specialized_subject_id' => 'integer',
+            'education_system' => 'string',
+            'city_or_address' => 'string',
             'theme_mode' => 'string',
             'is_online' => 'boolean',
             'last_seen' => 'datetime',
@@ -244,6 +257,26 @@ class User extends Authenticatable
     public function address()
     {
         return $this->hasOne(UserAddress::class);
+    }
+
+    public function stage(): BelongsTo
+    {
+        return $this->belongsTo(Stage::class);
+    }
+
+    public function grade(): BelongsTo
+    {
+        return $this->belongsTo(Grade::class);
+    }
+
+    public function track(): BelongsTo
+    {
+        return $this->belongsTo(Track::class);
+    }
+
+    public function specializedSubject(): BelongsTo
+    {
+        return $this->belongsTo(SpecializedSubject::class);
     }
 
     public function profile()

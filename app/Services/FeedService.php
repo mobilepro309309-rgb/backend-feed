@@ -67,8 +67,12 @@ class FeedService
             'normalized_grade' => $normalizedUserGrade,
         ]);
 
-        $cacheKey = 'feed:' . sha1(implode('|', [
+        $cacheKey = 'feed:v3:' . sha1(implode('|', [
             $user->id,
+            $user->stage_id ?? 'none',
+            $user->grade_id ?? 'none',
+            $user->track_id ?? 'none',
+            $user->specialized_subject_id ?? 'none',
             $normalizedUserGrade,
             $perPage,
             $unitNumber ?? 'all',
@@ -77,34 +81,47 @@ class FeedService
 
         return app(FeedCacheService::class)->remember($cacheKey, 30, function () use ($user, $userGradeRaw, $normalizedUserGrade, $unitNumber, $subject, $perPage): LengthAwarePaginator {
         $query = Feed::query()
-            ->where('status', 'published')
+            ->where(function ($visibilityQuery) use ($user): void {
+                $visibilityQuery->where('status', 'published')
+                    ->orWhere(function ($ownerQuery) use ($user): void {
+                        $ownerQuery->where('feedable_type', (new Post())->getMorphClass())
+                            ->whereHasMorph('feedable', [Post::class], function ($postQuery) use ($user): void {
+                                $postQuery->where('user_id', $user->id);
+                            });
+                    });
+            })
             ->with(['feedable' => function (MorphTo $morphTo): void {
                 $morphTo->morphWith([
-                    Post::class => ['user'],
+                    Post::class => ['user.stage', 'user.grade', 'user.track', 'user.specializedSubject'],
                 ])->morphWithCount([
                     Post::class => ['reactions', 'allComments'],
                 ]);
             }]);
 
         if (!$user->isAdmin()) {
-            if ($normalizedUserGrade) {
-                $query->whereHasMorph('feedable', '*', function ($feedableQuery, $type) use ($normalizedUserGrade, $userGradeRaw) {
-                    $instance = new $type();
-                    $table = $instance->getTable();
-                    $hasGradeColumn = Schema::hasColumn($table, 'school_grade');
+            $hasNewEducationData = collect(['stage_id', 'grade_id', 'track_id', 'specialized_subject_id'])
+                ->contains(fn (string $column): bool => $user->{$column} !== null);
 
-                    $feedableQuery->where(function ($subQuery) use ($normalizedUserGrade, $userGradeRaw, $hasGradeColumn) {
-                        if ($hasGradeColumn) {
-                            $subQuery->where('school_grade', $normalizedUserGrade)
-                                ->orWhere('school_grade', $userGradeRaw)
-                                ->orWhere('school_grade', (int) $normalizedUserGrade);
-                        } else {
-                            $subQuery->whereHas('user', function ($uq) use ($normalizedUserGrade, $userGradeRaw) {
-                                $uq->where('school_grade', $normalizedUserGrade)
-                                    ->orWhere('school_grade', $userGradeRaw);
-                            });
+            if ($hasNewEducationData) {
+                $query->where(function ($visibilityQuery) use ($user): void {
+                    $visibilityQuery->whereHasMorph('feedable', [Post::class], function ($feedableQuery) use ($user): void {
+                        $feedableQuery->where('user_id', $user->id)
+                            ->orWhereHas('user', function ($authorQuery) use ($user): void {
+                        foreach (['stage_id', 'grade_id', 'track_id', 'specialized_subject_id'] as $column) {
+                            $value = $user->{$column};
+                            $value === null ? $authorQuery->whereNull($column) : $authorQuery->where($column, $value);
                         }
+                            });
                     });
+                });
+            } elseif ($normalizedUserGrade) {
+                $query->whereHasMorph('feedable', [Post::class], function ($feedableQuery) use ($user, $normalizedUserGrade, $userGradeRaw): void {
+                    $feedableQuery->where('user_id', $user->id)
+                        ->orWhereHas('user', function ($authorQuery) use ($normalizedUserGrade, $userGradeRaw): void {
+                        $authorQuery->where('school_grade', $normalizedUserGrade)
+                            ->orWhere('school_grade', $userGradeRaw)
+                            ->orWhere('school_grade', (int) $normalizedUserGrade);
+                        });
                 });
             } else {
                 return $query->whereRaw('0 = 1')->paginate($perPage);

@@ -183,6 +183,12 @@ class AuthController extends Controller
                 'password' => Hash::make($validated['password']),
                 'gender' => $validated['gender'] ?? null,
                 'school_grade' => $validated['school_grade'] ?? null,
+                'stage_id' => $validated['stage_id'] ?? null,
+                'grade_id' => $validated['grade_id'] ?? null,
+                'track_id' => $validated['track_id'] ?? null,
+                'specialized_subject_id' => $validated['specialized_subject_id'] ?? null,
+                'education_system' => $validated['education_system'] ?? 'general',
+                'city_or_address' => $validated['city_or_address'] ?? null,
                 'referral_code' => User::generateUniqueReferralCode($validated['name'] ?? null),
             ]);
 
@@ -220,6 +226,13 @@ class AuthController extends Controller
 
             return $user;
         });
+
+        $user->load([
+            'stage',
+            'grade.stage',
+            'track.grade.stage',
+            'specializedSubject.track.grade.stage',
+        ]);
 
         return response()->json([
             'token' => $user->createToken('auth_token', ['api:access'])->plainTextToken,
@@ -308,7 +321,17 @@ class AuthController extends Controller
             'role' => $user->role,
             'gender' => $user->gender,
             'school_grade' => $user->school_grade ?? null,
-            'grade' => $user->school_grade ?? $user->grade ?? $user->grade_level ?? $user->academic_year ?? $user->stage ?? null,
+            'stage_id' => $user->stage_id,
+            'grade_id' => $user->grade_id,
+            'track_id' => $user->track_id,
+            'specialized_subject_id' => $user->specialized_subject_id,
+            'education_system' => $user->education_system ?? 'general',
+            'city_or_address' => $user->city_or_address,
+            'stage' => $user->stage,
+            'educational_grade' => $user->grade,
+            'track' => $user->track,
+            'specialized_subject' => $user->specializedSubject,
+            'grade' => $user->school_grade ?? null,
             'referral_code' => $user->referral_code ?? null,
             'referred_count' => $referralsCount,
             'referrals_count' => $referralsCount,

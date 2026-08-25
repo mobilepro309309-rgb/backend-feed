@@ -6,7 +6,7 @@ use App\Http\Controllers\Api\Users\{UserController, UserProfileController};
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Posts\{CommentController, PostController};
 use App\Http\Controllers\Api\{InteractiveVideoController, LatestQuestionsController, QuizBatchController, QuizTransactionController, UserSelectionController};
-use App\Http\Controllers\Api\Admin\{AdminHomeController, AdminRoleController, AdminUsersController, AdminDeviceBanController, TeacherManagementController, QuestionTypeSettingController, CurriculumUnitsController};
+use App\Http\Controllers\Api\Admin\{AdminHomeController, AdminRoleController, AdminUsersController, AdminDeviceBanController, TeacherManagementController, QuestionTypeSettingController, CurriculumUnitsController, StageController, GradeController, TrackController, SubjectController, SpecializedSubjectController};
 use App\Http\Controllers\Api\Location\{LocationController, NearbyStudentsController};
 use App\Http\Controllers\Api\Challenges\{CheatSheetController, CloudCapsuleChallengeController, ComparisonChallengeController, DailyChallengeController, FindTheBugChallengeController, LiveDuelChallengeController};
 use App\Http\Controllers\Api\Questions\{MultipleChoiceQuestionController, TrueFalseQuestionController};
@@ -22,6 +22,12 @@ $apiRoutes = function (): void {
     Route::get('/locations', [LocationController::class, 'index']);
     Route::get('/locations/governorates', [LocationController::class, 'governorates']);
     Route::get('/locations/governorates/{governorate}/districts', [LocationController::class, 'districtsForGovernorate']);
+
+    // Public curriculum options required before a student has an auth token.
+    Route::get('/registration/stages', [StageController::class, 'index']);
+    Route::get('/registration/grades', [GradeController::class, 'index']);
+    Route::get('/registration/tracks', [TrackController::class, 'index']);
+    Route::get('/registration/specialized-subjects', [SpecializedSubjectController::class, 'index']);
 
     Route::get('/users/{id}/latest-posts', [LatestQuestionsController::class, 'getUserLatestPosts']);
     Route::get('/users/{id}/latest-questions', [LatestQuestionsController::class, 'getUserQuestions']);
@@ -133,6 +139,11 @@ $apiRoutes = function (): void {
         Route::get('/admin/home', [AdminHomeController::class, 'index']);
         Route::get('/admin/dashboard/home', [AdminHomeController::class, 'index']);
         Route::get('/admin/dashboard/posts', [AdminHomeController::class, 'getPosts']);
+        Route::apiResource('admin/stages', StageController::class);
+        Route::apiResource('admin/grades', GradeController::class);
+        Route::apiResource('admin/tracks', TrackController::class);
+        Route::apiResource('admin/subjects', SubjectController::class);
+        Route::apiResource('admin/specialized-subjects', SpecializedSubjectController::class);
         Route::get('/admin/users', [AdminUsersController::class, 'index']);
         Route::put('/admin/users/{user}', [AdminUsersController::class, 'update']);
         Route::delete('/admin/users/{user}', [AdminUsersController::class, 'destroy']);

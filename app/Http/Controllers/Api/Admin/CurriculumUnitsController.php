@@ -11,20 +11,13 @@ class CurriculumUnitsController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = SubjectUnit::query()->orderBy('school_grade')->orderBy('subject');
+        $query = SubjectUnit::query()->with(['subject.grade.stage', 'subject.track.grade.stage'])->orderBy('subject_id');
 
-        if ($request->filled('school_grade')) {
-            $query->where('school_grade', (string) $request->input('school_grade'));
+        if ($request->filled('subject_id')) {
+            $query->where('subject_id', (int) $request->input('subject_id'));
         }
 
-        if ($request->filled('subject')) {
-            $query->where('subject', (string) $request->input('subject'));
-        }
-
-        $units = $query->get()->map(function ($unit) {
-            $unit->school_grade = (string) $unit->school_grade;
-            return $unit;
-        });
+        $units = $query->get();
 
         return response()->json([
             'success' => true,
@@ -44,15 +37,13 @@ class CurriculumUnitsController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'school_grade' => ['required', 'integer', 'min:1', 'max:3'],
-            'subject' => ['required', 'string', 'max:120'],
+            'subject_id' => ['required', 'integer', 'exists:subjects,id'],
             'total_units' => ['required', 'integer', 'min:0', 'max:50'],
         ]);
 
         $unit = SubjectUnit::updateOrCreate(
             [
-                'school_grade' => (string) $validated['school_grade'],
-                'subject' => trim((string) $validated['subject']),
+                'subject_id' => (int) $validated['subject_id'],
             ],
             [
                 'total_units' => (int) $validated['total_units'],
@@ -69,17 +60,12 @@ class CurriculumUnitsController extends Controller
     public function update(Request $request, SubjectUnit $subjectUnit): JsonResponse
     {
         $validated = $request->validate([
-            'school_grade' => ['sometimes', 'integer', 'min:1', 'max:3'],
-            'subject' => ['sometimes', 'string', 'max:120'],
+            'subject_id' => ['sometimes', 'integer', 'exists:subjects,id'],
             'total_units' => ['sometimes', 'integer', 'min:0', 'max:50'],
         ]);
 
-        if (array_key_exists('school_grade', $validated)) {
-            $subjectUnit->school_grade = (string) $validated['school_grade'];
-        }
-
-        if (array_key_exists('subject', $validated)) {
-            $subjectUnit->subject = trim((string) $validated['subject']);
+        if (array_key_exists('subject_id', $validated)) {
+            $subjectUnit->subject_id = (int) $validated['subject_id'];
         }
 
         if (array_key_exists('total_units', $validated)) {
