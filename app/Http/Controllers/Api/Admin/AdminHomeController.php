@@ -13,7 +13,9 @@ use App\Models\Challenges\{CloudCapsuleChallenge, ComparisonChallenge, DailyChal
 use App\Models\InteractiveVideo;
 use App\Models\TeacherScope;
 use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class AdminHomeController extends Controller
 {
@@ -493,13 +495,28 @@ class AdminHomeController extends Controller
             $allowedGrades = [];
         }
 
-        $requestedGrade = $this->resolveGradeFilter($request->query('school_grade', $request->query('grade_id')));
+        $requestedGrade = $this->resolveGradeFilter($request->query('school_grade'));
         if ($requestedGrade !== null && in_array($requestedGrade, $allowedGrades, true)) {
             $query->whereHas('user', function ($userQuery) use ($requestedGrade) {
                 $userQuery->whereRaw($this->getGradeNormalizationClause('users.school_grade', $requestedGrade));
             });
         } elseif ($requestedGrade !== null) {
             $query->whereRaw('0 = 1');
+        }
+
+        $scopeFilters = collect(['stage_id', 'grade_id', 'track_id'])
+            ->mapWithKeys(function (string $field) use ($request): array {
+                $value = $request->query($field);
+                return [$field => is_numeric($value) && (int) $value > 0 ? (int) $value : null];
+            })
+            ->filter();
+
+        if ($scopeFilters->isNotEmpty()) {
+            $query->whereHas('user', function ($userQuery) use ($scopeFilters): void {
+                foreach ($scopeFilters as $field => $value) {
+                    $userQuery->where($field, $value);
+                }
+            });
         }
 
         return $this->pendingPostsResponse($query, $request, $availableGrades);
@@ -542,6 +559,7 @@ class AdminHomeController extends Controller
 
     public function moderatePost(ModeratePostRequest $request, Post $post)
     {
+        $post->loadMissing('user');
         $user = $request->user();
         $role = strtolower((string) preg_replace('/[\s_-]+/', '-', trim((string) ($user->role ?? ''))));
         $isMainAdmin = in_array($role, ['main-admin', 'admin', 'super-admin'], true) || (bool) $user->is_main_admin;
@@ -578,6 +596,8 @@ class AdminHomeController extends Controller
                 'published_at' => now(),
             ]);
 
+            $this->sendPostModerationNotification($post, true);
+
             return response()->json([
                 'message' => 'تمت الموافقة على المنشور ونشره بنجاح',
                 'data' => $post->fresh()->load('user'),
@@ -585,7 +605,9 @@ class AdminHomeController extends Controller
         }
 
         if ($action === 'reject' || $action === 'rejected' || $action === 'delete') {
+            $postOwner = $post->user;
             $post->delete();
+            $this->sendPostModerationNotification($post, false, $postOwner);
 
             return response()->json([
                 'message' => 'تم رفض المنشور وحذفه بنجاح',
@@ -597,6 +619,36 @@ class AdminHomeController extends Controller
         return response()->json([
             'message' => 'الإجراء غير صالح. استخدم approve أو reject.',
         ], 422);
+    }
+
+    private function sendPostModerationNotification(Post $post, bool $approved, ?User $owner = null): void
+    {
+        $owner ??= $post->user;
+        if (! $owner) {
+            return;
+        }
+
+        $title = $approved ? 'تمت الموافقة على منشورك' : 'تم رفض منشورك';
+        $body = $approved
+            ? 'تمت الموافقة على منشورك ونشره.'
+            : 'تم رفض منشورك من الإدارة.';
+
+        try {
+            app(NotificationService::class)->sendNotification($owner, $title, $body, [
+                'type' => 'post_moderated',
+                'action' => $approved ? 'approved' : 'rejected',
+                'target_type' => 'post',
+                'target_id' => $post->id,
+                'post_id' => $post->id,
+            ]);
+        } catch (\Throwable $exception) {
+            Log::warning('Post moderation notification failed', [
+                'post_id' => $post->id,
+                'owner_id' => $owner->id,
+                'approved' => $approved,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     protected function resolveGradeFilter(mixed $value): ?string

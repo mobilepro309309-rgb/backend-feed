@@ -73,6 +73,36 @@ class AdminRoleController extends Controller
         ]);
     }
 
+    public function updateUserRole(Request $request)
+    {
+        $currentUser = $request->user();
+
+        $currentRole = strtolower(trim((string) ($currentUser?->role ?? '')));
+        $currentRole = str_replace(['_', ' '], '-', $currentRole);
+        if (! $currentUser || (! in_array($currentRole, ['main-admin', 'admin', 'super-admin'], true) && ! $currentUser->is_main_admin)) {
+            return response()->json([
+                'message' => 'فقط المسؤول الرئيسي يمكنه تغيير أدوار المستخدمين',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'role' => ['required', 'string', 'in:user,teacher,reply_questions_admin,question_post_admin,financial_admin,technical_support_admin,admin,main-admin'],
+        ]);
+
+        $targetUser = User::findOrFail($validated['user_id']);
+        $targetUser->role = $validated['role'];
+        $targetUser->save();
+
+        return response()->json([
+            'message' => 'تم تحديث دور المستخدم بنجاح',
+            'user' => [
+                'id' => $targetUser->id,
+                'role' => $targetUser->role,
+            ],
+        ]);
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([

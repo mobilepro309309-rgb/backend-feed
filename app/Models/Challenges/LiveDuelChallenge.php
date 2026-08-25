@@ -6,6 +6,7 @@ namespace App\Models\Challenges;
 
 use App\Models\Feed;
 use App\Models\QuestionExplanation;
+use App\Models\Subject;
 use App\Models\User;
 use App\Traits\SyncsToFeed;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -32,6 +33,10 @@ class LiveDuelChallenge extends Model
 
     protected $fillable = [
         'user_id',
+        'subject_id',
+        'stage_id',
+        'grade_id',
+        'track_id',
         'title',
         'subject',
         'school_grade',
@@ -43,6 +48,7 @@ class LiveDuelChallenge extends Model
         'question_count',
         'seconds_per_question',
         'questions',
+        'difficulty',
         'status',
         'published_at',
     ];
@@ -51,6 +57,7 @@ class LiveDuelChallenge extends Model
     {
         return [
             'questions' => 'array',
+            'subject_id' => 'integer',
             'published_at' => 'datetime',
             'question_count' => 'integer',
             'seconds_per_question' => 'integer',
@@ -61,6 +68,11 @@ class LiveDuelChallenge extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function subject(): BelongsTo
+    {
+        return $this->belongsTo(Subject::class);
     }
 
     public function explanation(): MorphOne

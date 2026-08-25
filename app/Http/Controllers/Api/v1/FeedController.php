@@ -12,6 +12,7 @@ use App\Http\Resources\FeedResource;
 use App\Models\PostVote;
 use App\Models\Posts\Post;
 use App\Services\FeedService;
+use Illuminate\Support\Facades\Log;
 
 class FeedController extends Controller
 {
@@ -23,8 +24,23 @@ class FeedController extends Controller
         $rawUnitNumber = $request->query('unit_number', $request->input('unit_number', 'all'));
         $unitNumber = (is_string($rawUnitNumber) && strtolower(trim($rawUnitNumber)) === 'all') ? null : ($rawUnitNumber !== null && $rawUnitNumber !== '' ? (int) $rawUnitNumber : null);
         $subject = $request->query('subject', $request->input('subject', null));
+        $subjectId = is_numeric($request->query('subject_id', $request->input('subject_id')))
+            ? (int) $request->query('subject_id', $request->input('subject_id'))
+            : null;
+        $difficulty = strtolower(trim((string) $request->input('difficulty', '')));
+        $difficulty = in_array($difficulty, ['easy', 'medium', 'hard'], true) ? $difficulty : null;
 
-        $feedData = $this->feedService->getPaginatedFeed(15, $unitNumber, $subject);
+        Log::info('[FeedScopeDebug] request scope', [
+            'user_id' => $user?->id,
+            'stage_id' => $request->input('stage_id'),
+            'grade_id' => $request->input('grade_id'),
+            'track_id' => $request->input('track_id'),
+            'subject_id' => $subjectId,
+            'unit_number' => $unitNumber,
+            'difficulty' => $difficulty,
+        ]);
+
+        $feedData = $this->feedService->getPaginatedFeed(15, $unitNumber, $subject, $subjectId, $difficulty);
 
         if ($user) {
             $postIds = $feedData->pluck('feedable')

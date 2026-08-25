@@ -6,6 +6,7 @@ namespace App\Models\Challenges;
 
 use App\Models\Feed;
 use App\Models\QuestionExplanation;
+use App\Models\Subject;
 use App\Models\User;
 use App\Traits\SyncsToFeed;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -32,6 +33,10 @@ class FindTheBugChallenge extends Model
 
     protected $fillable = [
         'user_id',
+        'subject_id',
+        'stage_id',
+        'grade_id',
+        'track_id',
         'title',
         'subject',
         'school_grade',
@@ -42,6 +47,7 @@ class FindTheBugChallenge extends Model
         'options',
         'correct_answer_index',
         'badge_text',
+        'difficulty',
         'status',
         'published_at',
     ];
@@ -50,6 +56,7 @@ class FindTheBugChallenge extends Model
     {
         return [
             'options' => 'array',
+            'subject_id' => 'integer',
             'correct_answer_index' => 'integer',
             'unit_number' => 'integer',
             'published_at' => 'datetime',
@@ -59,6 +66,11 @@ class FindTheBugChallenge extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function subject(): BelongsTo
+    {
+        return $this->belongsTo(Subject::class);
     }
 
     public function explanation(): MorphOne

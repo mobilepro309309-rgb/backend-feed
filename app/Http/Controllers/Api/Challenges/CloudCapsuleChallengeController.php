@@ -34,6 +34,7 @@ class CloudCapsuleChallengeController extends Controller
                 return [
                     'id' => $item->id,
                     'title' => $item->title,
+                    'subject_id' => $item->subject_id,
                     'subject' => $item->subject,
                     'school_grade' => $item->school_grade,
                     'status' => $item->status ?? 'draft',
@@ -76,8 +77,7 @@ class CloudCapsuleChallengeController extends Controller
         $subject = trim((string) $request->input('subject', ''));
         $schoolGrade = trim((string) $request->input('school_grade', $user->school_grade ?? ''));
 
-        if (! in_array($user->role, ['main-admin', 'question_post_admin'], true)
-            && ! $user->hasScope($schoolGrade, $subject, 'can_create_questions')) {
+        if ((string) ($user->role ?? '') === 'user') {
             return response()->json([
                 'message' => 'ليس لديك صلاحية لحفظ هذه الكبسولة',
             ], 403);
@@ -85,7 +85,11 @@ class CloudCapsuleChallengeController extends Controller
 
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:180'],
-            'subject' => ['required', 'string', 'max:120'],
+            'subject_id' => ['required', 'integer', 'exists:subjects,id'],
+            'stage_id' => ['nullable', 'integer'],
+            'grade_id' => ['nullable', 'integer'],
+            'track_id' => ['nullable', 'integer'],
+            'subject' => ['nullable', 'string', 'max:120'],
             'school_grade' => ['nullable', 'string'],
             'term' => ['nullable', 'in:1,2'],
             'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
@@ -98,6 +102,7 @@ class CloudCapsuleChallengeController extends Controller
             'mood_text' => ['nullable', 'string'],
             'reveal_label' => ['nullable', 'string', 'max:120'],
             'icon' => ['nullable', 'string', 'max:50'],
+            'difficulty' => ['sometimes', 'string', 'in:easy,medium,hard'],
             'status' => ['nullable', 'in:draft,published'],
         ]);
 
@@ -107,6 +112,10 @@ class CloudCapsuleChallengeController extends Controller
 
         $challenge = new CloudCapsuleChallenge();
         $challenge->user_id = $user->id;
+        $challenge->subject_id = (int) $validated['subject_id'];
+        $challenge->stage_id = $validated['stage_id'] ?? null;
+        $challenge->grade_id = $validated['grade_id'] ?? null;
+        $challenge->track_id = $validated['track_id'] ?? null;
         $challenge->title = $validated['title'];
         $challenge->subject = $validated['subject'];
         $challenge->school_grade = $validated['school_grade'] ?? null;
@@ -120,6 +129,7 @@ class CloudCapsuleChallengeController extends Controller
         $challenge->mood_text = $validated['mood_text'] ?? null;
         $challenge->reveal_label = $validated['reveal_label'] ?? null;
         $challenge->icon = $validated['icon'] ?? 'cloud';
+        $challenge->difficulty = $validated['difficulty'] ?? 'medium';
         $challenge->status = $validated['status'] ?? 'draft';
         $challenge->published_at = ($validated['status'] ?? 'draft') === 'published' ? now() : null;
         $challenge->save();

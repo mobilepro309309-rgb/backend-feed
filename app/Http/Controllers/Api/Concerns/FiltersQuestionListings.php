@@ -15,6 +15,13 @@ trait FiltersQuestionListings
         return $subject !== '' ? $subject : null;
     }
 
+    protected function resolveListingSubjectId(Request $request): ?int
+    {
+        $value = $request->query('subject_id', $request->input('subject_id'));
+
+        return is_numeric($value) && (int) $value > 0 ? (int) $value : null;
+    }
+
     protected function resolveListingSchoolGrade(Request $request): ?string
     {
         $grade = trim((string) $request->query('school_grade', $request->input('school_grade', '')));
@@ -49,10 +56,26 @@ trait FiltersQuestionListings
         });
 
         $subjectVariants = $this->buildSubjectVariants($this->resolveListingSubject($request));
+        $subjectId = $this->resolveListingSubjectId($request);
         $gradeVariants = $this->buildSchoolGradeVariants($this->resolveListingSchoolGrade($request));
         $unitNumber = $this->resolveListingUnitNumber($request);
+        $requestedSubjectId = $this->resolveListingSubjectId($request);
 
-        if ($subjectVariants !== []) {
+        $student = $request->user() ?? auth('sanctum')->user() ?? auth()->user();
+        if ($student && (string) $student->role === 'user') {
+            $query->where('stage_id', $student->stage_id)
+                ->where('grade_id', $student->grade_id)
+                ->when($student->track_id, fn (Builder $scopeQuery) => $scopeQuery->where('track_id', $student->track_id))
+                ->when(! $student->track_id, fn (Builder $scopeQuery) => $scopeQuery->whereNull('track_id'));
+        }
+
+        if ($requestedSubjectId !== null && $subjectColumn === 'subject') {
+            $query->where('subject_id', $requestedSubjectId);
+        }
+
+        if ($subjectId !== null) {
+            $query->where($subjectColumn === 'subject' ? 'subject_id' : $subjectColumn, $subjectId);
+        } elseif ($subjectVariants !== []) {
             $query->where(function (Builder $subjectQuery) use ($subjectVariants, $subjectColumn): void {
                 foreach ($subjectVariants as $index => $variant) {
                     $normalizedVariant = $this->normalizeComparableToken($variant);
@@ -70,7 +93,7 @@ trait FiltersQuestionListings
             });
         }
 
-        if ($gradeVariants !== []) {
+        if ($subjectId === null && $gradeVariants !== []) {
             $query->where(function (Builder $gradeQuery) use ($gradeVariants, $gradeColumn): void {
                 foreach ($gradeVariants as $index => $variant) {
                     $normalizedVariant = $this->normalizeComparableToken($variant);

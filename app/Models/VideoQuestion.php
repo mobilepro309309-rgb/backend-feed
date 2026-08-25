@@ -21,6 +21,7 @@ class VideoQuestion extends Model
         'stop_second',
         'file_url',
         'explanation',
+        'difficulty',
     ];
 
     public function interactiveVideo()

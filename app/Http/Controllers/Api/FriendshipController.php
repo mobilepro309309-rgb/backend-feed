@@ -78,14 +78,12 @@ class FriendshipController extends Controller
                 $currentUserAddress = (object) $user->address->toArray();
             }
 
-            // If user lacks an address record, try using the free-text `location` field as a fallback.
-            $useLocationFallback = false;
-            if (! $currentUserAddress && ! empty($user->location)) {
-                $useLocationFallback = true;
-            }
-
-            // Allow searches even when `school_grade` is not set: omit grade filter in that case.
-            $schoolGrade = $user->school_grade;
+            $search = trim((string) $request->query('search', ''));
+            $user->loadMissing(['stage', 'grade', 'track']);
+            $scopeStageId = $user->stage_id ?? $user->grade?->stage_id;
+            $scopeGradeId = $user->grade_id ?? $user->grade?->id;
+            $scopeTrackId = $user->track_id;
+            $legacyGrade = User::normalizeSchoolGradeValue($user->school_grade ?? $user->grade?->id);
 
             $friendships = Friendship::query()
                 ->where(function ($query) use ($user) {
@@ -126,39 +124,67 @@ class FriendshipController extends Controller
             $nearbyQuery = User::with('address')
                 ->where('id', '!=', $user->id)
                 ->where('role', 'user')
-                ->when(! empty($schoolGrade), function ($q) use ($schoolGrade) {
-                    $q->where('school_grade', $schoolGrade);
-                });
+                ->where(function ($scopeQuery) use ($scopeStageId, $scopeGradeId, $scopeTrackId, $legacyGrade): void {
+                    if ($scopeStageId !== null && $scopeGradeId !== null) {
+                        $scopeQuery->where('stage_id', $scopeStageId)
+                            ->where('grade_id', $scopeGradeId)
+                            ->when($scopeTrackId !== null, fn ($query) => $query->where('track_id', $scopeTrackId))
+                            ->when($scopeTrackId === null, fn ($query) => $query->whereNull('track_id'));
+                    }
 
-            if ($currentUserAddress) {
-                $nearbyQuery->whereHas('address', function ($query) use ($currentUserAddress) {
-                    $query->where('governorate', $currentUserAddress->governorate)
-                        ->where('city_or_center', $currentUserAddress->city_or_center);
+                    if ($legacyGrade !== null) {
+                        $scopeQuery->orWhere(function ($legacyQuery) use ($legacyGrade, $scopeTrackId): void {
+                            $legacyQuery->whereNull('stage_id')
+                                ->whereNull('grade_id')
+                                ->where('school_grade', $legacyGrade)
+                                ->when($scopeTrackId !== null, fn ($query) => $query->where('track_id', $scopeTrackId))
+                                ->when($scopeTrackId === null, fn ($query) => $query->whereNull('track_id'));
+                        });
+                    }
+
+                    if ($scopeGradeId !== null && $scopeStageId !== null) {
+                        $scopeQuery->orWhere(function ($partialScopeQuery) use ($scopeStageId, $scopeGradeId, $scopeTrackId): void {
+                            $partialScopeQuery->whereNull('stage_id')
+                                ->where('grade_id', $scopeGradeId)
+                                ->whereHas('grade', fn ($gradeQuery) => $gradeQuery->where('stage_id', $scopeStageId))
+                                ->when($scopeTrackId !== null, fn ($query) => $query->where('track_id', $scopeTrackId))
+                                ->when($scopeTrackId === null, fn ($query) => $query->whereNull('track_id'));
+                        });
+                    }
+                })
+                ->when($search !== '', function ($query) use ($search) {
+                    $query->where(function ($searchQuery) use ($search) {
+                        $searchQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('phone', 'like', "%{$search}%")
+                            ->orWhere('id', is_numeric($search) ? (int) $search : 0);
+                    });
                 });
-            } elseif ($useLocationFallback) {
-                // Fallback to matching the free-text `location` when no address record exists
-                $nearbyQuery->where('location', $user->location);
-            } else {
-                // If we couldn't determine user's location, return empty collection
-                return response()->json([
-                    'type' => 'nearby',
-                    'data' => collect(),
-                ], 200);
-            }
 
             $nearbyUsers = $nearbyQuery
                 ->when(count($blockedIds) > 0, function ($query) use ($blockedIds) {
                     $query->whereNotIn('id', $blockedIds);
                 })
-                ->when(count($acceptedIds) > 0, function ($query) use ($acceptedIds) {
-                    $query->whereNotIn('id', $acceptedIds);
+                ->get(['id', 'name', 'email', 'phone', 'school_grade', 'stage_id', 'grade_id', 'track_id'])
+                ->sortBy(function (User $friend) use ($currentUserAddress): array {
+                    $friendAddress = $friend->address;
+                    $friendGovernorate = trim((string) ($friendAddress?->governorate ?? ''));
+                    $friendCenter = trim((string) ($friendAddress?->city_or_center ?? ''));
+                    $currentGovernorate = trim((string) ($currentUserAddress?->governorate ?? ''));
+                    $currentCenter = trim((string) ($currentUserAddress?->city_or_center ?? ''));
+
+                    return [
+                        $friendGovernorate === $currentGovernorate ? 0 : 1,
+                        $friendCenter === $currentCenter ? 0 : 1,
+                        $friendGovernorate,
+                        $friendCenter,
+                        (string) $friend->name,
+                    ];
                 })
-                ->get(['id', 'name', 'email', 'phone', 'school_grade'])
-                ->map(function (User $friend) use ($pendingSentIds) {
+                ->map(function (User $friend) use ($pendingSentIds, $acceptedIds) {
                     return array_merge($friend->toArray(), [
-                        'friendship_status' => in_array($friend->id, $pendingSentIds, true)
-                            ? 'pending_sent'
-                            : 'none',
+                        'friendship_status' => in_array($friend->id, $acceptedIds, true)
+                            ? 'accepted'
+                            : (in_array($friend->id, $pendingSentIds, true) ? 'pending_sent' : 'none'),
                     ]);
                 });
 

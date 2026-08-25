@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\{BelongsTo, MorphMany, MorphOne};
 
-use App\Models\{Feed, QuestionExplanation, User};
+use App\Models\{Feed, QuestionExplanation, Subject, User};
 use App\Traits\SyncsToFeed;
 
 class MultipleChoiceQuestion extends Model
@@ -29,6 +29,10 @@ class MultipleChoiceQuestion extends Model
 
     protected $fillable = [
         'user_id',
+        'subject_id',
+        'stage_id',
+        'grade_id',
+        'track_id',
         'title',
         'subject',
         'school_grade',
@@ -39,6 +43,7 @@ class MultipleChoiceQuestion extends Model
         'options',
         'correct_index',
         'badge_text',
+        'difficulty',
         'status',
         'published_at',
     ];
@@ -47,6 +52,10 @@ class MultipleChoiceQuestion extends Model
     {
         return [
             'options' => 'array',
+            'subject_id' => 'integer',
+            'stage_id' => 'integer',
+            'grade_id' => 'integer',
+            'track_id' => 'integer',
             'correct_index' => 'integer',
             'unit_number' => 'integer',
             'published_at' => 'datetime',
@@ -56,6 +65,11 @@ class MultipleChoiceQuestion extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function subject(): BelongsTo
+    {
+        return $this->belongsTo(Subject::class);
     }
 
     public function feeds(): MorphMany

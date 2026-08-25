@@ -6,6 +6,7 @@ namespace App\Models\Questions;
 
 use App\Models\Feed;
 use App\Models\QuestionExplanation;
+use App\Models\Subject;
 use App\Models\User;
 use App\Traits\SyncsToFeed;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -32,6 +33,10 @@ class TrueFalseQuestion extends Model
 
     protected $fillable = [
         'user_id',
+        'subject_id',
+        'stage_id',
+        'grade_id',
+        'track_id',
         'title',
         'subject',
         'school_grade',
@@ -42,6 +47,7 @@ class TrueFalseQuestion extends Model
         'correct_answer',
         'explanation',
         'badge_text',
+        'difficulty',
         'status',
         'published_at',
     ];
@@ -50,6 +56,10 @@ class TrueFalseQuestion extends Model
     {
         return [
             'correct_answer' => 'boolean',
+            'subject_id' => 'integer',
+            'stage_id' => 'integer',
+            'grade_id' => 'integer',
+            'track_id' => 'integer',
             'unit_number' => 'integer',
             'published_at' => 'datetime',
         ];
@@ -58,6 +68,11 @@ class TrueFalseQuestion extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function subject(): BelongsTo
+    {
+        return $this->belongsTo(Subject::class);
     }
 
     public function feeds(): MorphMany

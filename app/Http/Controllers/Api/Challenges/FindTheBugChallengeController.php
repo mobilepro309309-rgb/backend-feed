@@ -41,6 +41,7 @@ class FindTheBugChallengeController extends Controller
                 $quizData = [
                     'id' => $item->id,
                     'title' => $item->title,
+                    'subject_id' => $item->subject_id,
                     'subject' => $item->subject,
                     'school_grade' => $item->school_grade,
                     'status' => $item->status ?? 'draft',
@@ -156,8 +157,7 @@ class FindTheBugChallengeController extends Controller
         $subject = trim((string) $request->input('subject', ''));
         $schoolGrade = trim((string) $request->input('school_grade', $user->school_grade ?? ''));
 
-        if (! in_array($user->role, ['main-admin', 'question_post_admin'], true)
-            && ! $user->hasScope($schoolGrade, $subject, 'can_create_questions')) {
+        if ((string) ($user->role ?? '') === 'user') {
             return response()->json([
                 'message' => 'ليس لديك صلاحية لحفظ هذا السؤال',
             ], 403);
@@ -165,7 +165,11 @@ class FindTheBugChallengeController extends Controller
 
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:180'],
-            'subject' => ['required', 'string', 'max:120'],
+            'subject_id' => ['required', 'integer', 'exists:subjects,id'],
+            'stage_id' => ['nullable', 'integer'],
+            'grade_id' => ['nullable', 'integer'],
+            'track_id' => ['nullable', 'integer'],
+            'subject' => ['nullable', 'string', 'max:120'],
             'school_grade' => ['nullable', 'string'],
             'term' => ['nullable', 'in:1,2'],
             'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
@@ -176,6 +180,7 @@ class FindTheBugChallengeController extends Controller
             'badge_text' => ['nullable', 'string', 'max:120'],
             'file_url' => ['nullable', 'string', 'max:2048'],
             'explanation_video_url' => ['nullable', 'string', 'max:2048'],
+            'difficulty' => ['sometimes', 'string', 'in:easy,medium,hard'],
             'status' => ['nullable', 'in:draft,published'],
         ]);
 
@@ -197,6 +202,10 @@ class FindTheBugChallengeController extends Controller
 
         $challenge = FindTheBugChallenge::create([
             'user_id' => $user->id,
+            'subject_id' => (int) $validated['subject_id'],
+            'stage_id' => $validated['stage_id'] ?? null,
+            'grade_id' => $validated['grade_id'] ?? null,
+            'track_id' => $validated['track_id'] ?? null,
             'title' => $validated['title'],
             'subject' => $validated['subject'],
             'school_grade' => $validated['school_grade'] ?? null,
@@ -207,6 +216,7 @@ class FindTheBugChallengeController extends Controller
             'options' => array_values(array_map(fn($value) => (string) $value, $validated['options'])),
             'correct_answer_index' => (int) $validated['correct_answer_index'],
             'badge_text' => $validated['badge_text'] ?? null,
+            'difficulty' => $validated['difficulty'] ?? 'medium',
             'status' => $validated['status'] ?? 'draft',
             'published_at' => ($validated['status'] ?? 'draft') === 'published' ? now() : null,
         ]);

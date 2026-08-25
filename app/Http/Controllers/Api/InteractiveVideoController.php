@@ -27,6 +27,8 @@ class InteractiveVideoController extends Controller
 
         $videosQuery = InteractiveVideo::with([
             'user',
+            'subject.grade.stage',
+            'subject.track',
             'videoQuestions' => function ($query) {
                 $query->select([
                     'id',
@@ -41,11 +43,32 @@ class InteractiveVideoController extends Controller
                     'stop_second',
                     'file_url',
                     'explanation',
+                    'difficulty',
                 ]);
             },
         ]);
 
-        if ($resolvedGrade !== null && $resolvedGrade !== '') {
+        if ($user && (string) $user->role === 'user') {
+            $videosQuery->where(function ($scopeQuery) use ($user): void {
+                $scopeQuery->where(function ($directScopeQuery) use ($user): void {
+                    $directScopeQuery->where('stage_id', $user->stage_id)
+                        ->where('grade_id', $user->grade_id)
+                        ->when($user->track_id, fn ($query) => $query->where('track_id', $user->track_id))
+                        ->when(! $user->track_id, fn ($query) => $query->whereNull('track_id'));
+                })->orWhere(function ($legacyScopeQuery) use ($user): void {
+                    $legacyScopeQuery->whereNull('stage_id')
+                        ->whereNull('grade_id')
+                        ->whereNull('track_id')
+                        ->whereHas('subject', function ($subjectQuery) use ($user): void {
+                            $subjectQuery->whereHas('grade', fn ($gradeQuery) => $gradeQuery->where('id', $user->grade_id)->where('stage_id', $user->stage_id))
+                                ->when($user->track_id, fn ($query) => $query->where('track_id', $user->track_id))
+                                ->when(! $user->track_id, fn ($query) => $query->whereNull('track_id'));
+                        });
+                });
+            });
+        }
+
+        if ((! $user || (string) $user->role !== 'user') && ! $request->filled('subject_id') && $resolvedGrade !== null && $resolvedGrade !== '') {
             $gradeVariants = $this->getSchoolGradeVariants($resolvedGrade);
 
             $videosQuery->where(function ($query) use ($gradeVariants) {
@@ -55,7 +78,9 @@ class InteractiveVideoController extends Controller
             });
         }
 
-        if ($request->filled('subject')) {
+        if ($request->filled('subject_id')) {
+            $videosQuery->where('subject_id', (int) $request->input('subject_id'));
+        } elseif ($request->filled('subject')) {
             $subject = trim((string) $request->input('subject'));
             if ($subject !== '') {
                 $videosQuery->where('subject', $subject);
@@ -78,14 +103,28 @@ class InteractiveVideoController extends Controller
 
     public function store(Request $request)
     {
+        $user = auth('sanctum')->user() ?? auth()->user();
+        if (! $user) {
+            return response()->json(['message' => 'المستخدم غير مصادق عليه'], 401);
+        }
+
+        if ((string) ($user->role ?? '') === 'user') {
+            return response()->json(['message' => 'ليس لديك صلاحية لحفظ الفيديو'], 403);
+        }
+
         $validator = Validator::make($request->all(), [
             'title' => ['required', 'string', 'max:255'],
             'youtube_url' => ['required', 'string', 'url', 'max:2048'],
+            'subject_id' => ['required', 'integer', 'exists:subjects,id'],
+            'stage_id' => ['nullable', 'integer'],
+            'grade_id' => ['nullable', 'integer'],
+            'track_id' => ['nullable', 'integer'],
             'subject' => ['nullable', 'string', 'max:120'],
             'school_grade' => ['nullable', 'string', 'max:120'],
             'term' => ['nullable', 'string', 'max:120'],
             'unit_number' => ['nullable', 'integer', 'min:1', 'max:255'],
             'number_of_questions' => ['required', 'integer', 'min:0'],
+            'difficulty' => ['sometimes', 'string', 'in:easy,medium,hard'],
             'questions' => ['required', 'array', 'min:1'],
             'questions.*.question_text' => ['nullable', 'string'],
             'questions.*.choice_1' => ['required', 'string'],
@@ -97,6 +136,7 @@ class InteractiveVideoController extends Controller
             'questions.*.stop_second' => ['required', 'integer', 'min:0', 'max:59'],
             'questions.*.file_url' => ['nullable', 'string', 'max:2048'],
             'questions.*.explanation' => ['nullable', 'string'],
+            'questions.*.difficulty' => ['sometimes', 'string', 'in:easy,medium,hard'],
         ]);
 
         $validator->after(function ($validator) use ($request) {
@@ -116,7 +156,11 @@ class InteractiveVideoController extends Controller
 
         try {
             $video = InteractiveVideo::create([
-                'user_id' => auth()->id(),
+                'user_id' => $user->id,
+                'subject_id' => (int) $validated['subject_id'],
+                'stage_id' => $validated['stage_id'] ?? null,
+                'grade_id' => $validated['grade_id'] ?? null,
+                'track_id' => $validated['track_id'] ?? null,
                 'title' => $validated['title'],
                 'youtube_url' => $validated['youtube_url'],
                 'subject' => $validated['subject'] ?? null,
@@ -124,6 +168,7 @@ class InteractiveVideoController extends Controller
                 'term' => $validated['term'] ?? null,
                 'unit_number' => $validated['unit_number'] ?? null,
                 'number_of_questions' => $validated['number_of_questions'],
+                'difficulty' => $validated['difficulty'] ?? 'medium',
             ]);
 
             foreach ($validated['questions'] as $questionData) {
@@ -140,15 +185,20 @@ class InteractiveVideoController extends Controller
                     'stop_second' => $questionData['stop_second'],
                     'file_url' => $questionData['file_url'] ?? null,
                     'explanation' => $questionData['explanation'] ?? null,
+                    'difficulty' => $questionData['difficulty'] ?? 'medium',
                 ]);
             }
 
             DB::commit();
 
-            $creatorId = auth()->id();
-            $recipients = $creatorId
-                ? User::where('id', '!=', $creatorId)->get()
-                : User::all();
+            $recipients = User::query()
+                ->where('role', 'user')
+                ->where('stage_id', $video->stage_id)
+                ->where('grade_id', $video->grade_id)
+                ->when($video->track_id, fn ($query) => $query->where('track_id', $video->track_id))
+                ->when(! $video->track_id, fn ($query) => $query->whereNull('track_id'))
+                ->whereHas('devices')
+                ->get();
 
             $notificationData = [
                 'type' => 'new_video',
@@ -156,19 +206,27 @@ class InteractiveVideoController extends Controller
                 'target_id' => $video->id,
                 'video_id' => $video->id,
                 'video_title' => $validated['title'],
+                'stage_id' => (string) ($video->stage_id ?? ''),
+                'grade_id' => (string) ($video->grade_id ?? ''),
+                'track_id' => (string) ($video->track_id ?? ''),
             ];
 
+            $notifiedStudents = 0;
             foreach ($recipients as $recipient) {
-                $this->notificationService->sendNotification(
+                $pushResult = $this->notificationService->sendPushOnlyToUser(
                     $recipient,
                     'فيديو جديد',
                     'تم نشر فيديو جديد: ' . $validated['title'],
                     $notificationData
                 );
+                if ($pushResult['success'] === true) {
+                    $notifiedStudents++;
+                }
             }
 
             return response()->json([
                 'message' => 'Interactive video created successfully.',
+                'notified_students' => $notifiedStudents,
                 'data' => $video->load('videoQuestions'),
             ], 201);
         } catch (\Throwable $exception) {

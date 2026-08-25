@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class FeedService
 {
-    public function getPaginatedFeed(int $perPage = 10, ?int $unitNumber = null, ?string $subject = null): LengthAwarePaginator
+    public function getPaginatedFeed(int $perPage = 10, ?int $unitNumber = null, ?string $subject = null, ?int $subjectId = null, ?string $difficulty = null): LengthAwarePaginator
     {
         $user = auth('sanctum')->user() ?? auth()->user();
 
@@ -73,13 +73,15 @@ class FeedService
             $user->grade_id ?? 'none',
             $user->track_id ?? 'none',
             $user->specialized_subject_id ?? 'none',
+            $subjectId ?? 'all',
             $normalizedUserGrade,
             $perPage,
             $unitNumber ?? 'all',
             strtolower(trim((string) $subject)),
+            $difficulty ?? 'all',
         ]));
 
-        return app(FeedCacheService::class)->remember($cacheKey, 30, function () use ($user, $userGradeRaw, $normalizedUserGrade, $unitNumber, $subject, $perPage): LengthAwarePaginator {
+        return app(FeedCacheService::class)->remember($cacheKey, 30, function () use ($user, $userGradeRaw, $normalizedUserGrade, $unitNumber, $subject, $subjectId, $difficulty, $perPage): LengthAwarePaginator {
         $query = Feed::query()
             ->where(function ($visibilityQuery) use ($user): void {
                 $visibilityQuery->where('status', 'published')
@@ -99,33 +101,30 @@ class FeedService
             }]);
 
         if (!$user->isAdmin()) {
-            $hasNewEducationData = collect(['stage_id', 'grade_id', 'track_id', 'specialized_subject_id'])
-                ->contains(fn (string $column): bool => $user->{$column} !== null);
+            $query->whereHasMorph('feedable', '*', function ($feedableQuery, $type) use ($user): void {
+                $table = (new $type())->getTable();
 
-            if ($hasNewEducationData) {
-                $query->where(function ($visibilityQuery) use ($user): void {
-                    $visibilityQuery->whereHasMorph('feedable', [Post::class], function ($feedableQuery) use ($user): void {
-                        $feedableQuery->where('user_id', $user->id)
-                            ->orWhereHas('user', function ($authorQuery) use ($user): void {
-                        foreach (['stage_id', 'grade_id', 'track_id', 'specialized_subject_id'] as $column) {
-                            $value = $user->{$column};
-                            $value === null ? $authorQuery->whereNull($column) : $authorQuery->where($column, $value);
-                        }
-                            });
-                    });
-                });
-            } elseif ($normalizedUserGrade) {
-                $query->whereHasMorph('feedable', [Post::class], function ($feedableQuery) use ($user, $normalizedUserGrade, $userGradeRaw): void {
+                if (Schema::hasColumn($table, 'stage_id')
+                    && Schema::hasColumn($table, 'grade_id')
+                    && Schema::hasColumn($table, 'track_id')) {
+                    $feedableQuery->where('stage_id', $user->stage_id)
+                        ->where('grade_id', $user->grade_id)
+                        ->when($user->track_id, fn ($scopeQuery) => $scopeQuery->where('track_id', $user->track_id))
+                        ->when(! $user->track_id, fn ($scopeQuery) => $scopeQuery->whereNull('track_id'));
+
+                    return;
+                }
+
+                if ($type === Post::class) {
                     $feedableQuery->where('user_id', $user->id)
-                        ->orWhereHas('user', function ($authorQuery) use ($normalizedUserGrade, $userGradeRaw): void {
-                        $authorQuery->where('school_grade', $normalizedUserGrade)
-                            ->orWhere('school_grade', $userGradeRaw)
-                            ->orWhere('school_grade', (int) $normalizedUserGrade);
+                        ->orWhereHas('user', function ($authorQuery) use ($user): void {
+                            $authorQuery->where('stage_id', $user->stage_id)
+                                ->where('grade_id', $user->grade_id)
+                                ->when($user->track_id, fn ($scopeQuery) => $scopeQuery->where('track_id', $user->track_id))
+                                ->when(! $user->track_id, fn ($scopeQuery) => $scopeQuery->whereNull('track_id'));
                         });
-                });
-            } else {
-                return $query->whereRaw('0 = 1')->paginate($perPage);
-            }
+                }
+            });
         }
 
         if ($unitNumber !== null && $unitNumber !== 'all' && $unitNumber !== '') {
@@ -147,6 +146,18 @@ class FeedService
                     }
                 });
             }
+        }
+
+        if ($difficulty !== null && $difficulty !== '') {
+            $query->whereHasMorph('feedable', '*', function ($feedableQuery, $type) use ($difficulty): void {
+                $table = (new $type())->getTable();
+
+                if (Schema::hasColumn($table, 'difficulty')) {
+                    $feedableQuery->where('difficulty', $difficulty);
+                } else {
+                    $feedableQuery->whereRaw('1 = 0');
+                }
+            });
         }
 
         $feed = $query

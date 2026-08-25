@@ -22,6 +22,14 @@ class CurriculumUnitsController extends Controller
         return response()->json([
             'success' => true,
             'data' => $units,
+            'units' => $units->map(function (SubjectUnit $subjectUnit): array {
+                return [
+                    'subject_id' => $subjectUnit->subject_id,
+                    'unit_numbers' => $subjectUnit->total_units > 0
+                        ? range(1, (int) $subjectUnit->total_units)
+                        : [],
+                ];
+            })->values(),
             'count' => $units->count(),
         ]);
     }

@@ -14,6 +14,7 @@ use App\Models\Questions\MultipleChoiceQuestion;
 use App\Models\Questions\TrueFalseQuestion;
 use App\Models\TeacherScope;
 use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -215,19 +216,43 @@ class TeacherManagementController extends Controller
         Log::info('📊 [TARGET TABLE]: ' . $table);
 
         $query = DB::table($table)->where('user_id', $user->id);
+        Log::info('[QuestionsDebug] base query scope', [
+            'user_id' => $user->id,
+            'sql' => $query->toSql(),
+            'bindings' => $query->getBindings(),
+        ]);
 
         $resolvedSubject = $this->resolveListingSubject($request);
+        $resolvedSubjectId = $request->query('subject_id', $request->input('subject_id'));
         $resolvedGrade = $this->resolveListingSchoolGrade($request);
         $resolvedUnit = $request->query('unit_number', $request->input('unit_number'));
         $subjectVariants = $this->buildSubjectVariants($resolvedSubject);
         $gradeVariants = $this->buildSchoolGradeVariants($resolvedGrade);
 
+        Log::info('[QuestionsDebug] incoming filters', [
+            'user_id' => $user->id,
+            'type' => $type,
+            'table' => $table,
+            'subject_id_raw' => $resolvedSubjectId,
+            'subject_id_valid' => is_numeric($resolvedSubjectId) && (int) $resolvedSubjectId > 0 ? (int) $resolvedSubjectId : null,
+            'unit_number_raw' => $resolvedUnit,
+            'unit_number_valid' => is_numeric($resolvedUnit) && (int) $resolvedUnit > 0 ? (int) $resolvedUnit : null,
+        ]);
+
         Log::info('📌 [RESOLVED subject]: ' . ($resolvedSubject ?? 'NULL'));
+        Log::info('📌 [RESOLVED subject_id]: ' . ($resolvedSubjectId ?? 'NULL'));
         Log::info('📌 [RESOLVED school_grade]: ' . ($resolvedGrade ?? 'NULL'));
         Log::info('📌 [SUBJECT VARIANTS]: ' . json_encode($subjectVariants, JSON_UNESCAPED_UNICODE));
         Log::info('📌 [GRADE VARIANTS]: ' . json_encode($gradeVariants, JSON_UNESCAPED_UNICODE));
 
-        if ($subjectVariants !== []) {
+        if (is_numeric($resolvedSubjectId) && (int) $resolvedSubjectId > 0) {
+            $query->where('subject_id', (int) $resolvedSubjectId);
+            Log::info('[QuestionsDebug] subject_id filter appended', [
+                'subject_id' => (int) $resolvedSubjectId,
+                'sql' => $query->toSql(),
+                'bindings' => $query->getBindings(),
+            ]);
+        } elseif ($subjectVariants !== []) {
             $query->where(function ($subjectQuery) use ($subjectVariants) {
                 foreach ($subjectVariants as $index => $variant) {
                     $variant = trim((string) $variant);
@@ -247,7 +272,7 @@ class TeacherManagementController extends Controller
             });
         }
 
-        if ($gradeVariants !== []) {
+        if (! (is_numeric($resolvedSubjectId) && (int) $resolvedSubjectId > 0) && $gradeVariants !== []) {
             $query->where(function ($gradeQuery) use ($gradeVariants) {
                 foreach ($gradeVariants as $index => $variant) {
                     $variant = trim((string) $variant);
@@ -269,11 +294,29 @@ class TeacherManagementController extends Controller
 
         if ($resolvedUnit !== null && $resolvedUnit !== '') {
             $query->where('unit_number', (int) $resolvedUnit);
+            Log::info('[QuestionsDebug] unit_number filter appended', [
+                'unit_number' => (int) $resolvedUnit,
+                'sql' => $query->toSql(),
+                'bindings' => $query->getBindings(),
+            ]);
         }
+
+        Log::info('[QuestionsDebug] final query before execution', [
+            'uses_subject_id_filter' => is_numeric($resolvedSubjectId) && (int) $resolvedSubjectId > 0,
+            'uses_legacy_subject_filter' => ! (is_numeric($resolvedSubjectId) && (int) $resolvedSubjectId > 0) && $subjectVariants !== [],
+            'uses_legacy_grade_filter' => ! (is_numeric($resolvedSubjectId) && (int) $resolvedSubjectId > 0) && $gradeVariants !== [],
+            'sql' => $query->toSql(),
+            'bindings' => $query->getBindings(),
+        ]);
 
         $items = $query->get();
 
-        Log::info('🔢 [RAW TABLE COUNT (user_id only)]:', ['count' => $items->count()]);
+        Log::info('[QuestionsDebug] query result', [
+            'count' => $items->count(),
+            'ids' => $items->pluck('id')->values()->all(),
+            'subject_ids' => $items->pluck('subject_id')->unique()->values()->all(),
+            'unit_numbers' => $items->pluck('unit_number')->unique()->values()->all(),
+        ]);
         Log::info('📦 [RAW ITEMS RETURNED FROM DB]:', $items->toArray());
         Log::info('🔥🔥🔥 [BACKEND DEBUG END] 🔥🔥🔥');
 
@@ -314,7 +357,14 @@ class TeacherManagementController extends Controller
             ], 404);
         }
 
-        $requestedStatus = $request->input('status');
+        $validated = $request->validate([
+            'status' => ['nullable', 'in:draft,published'],
+            'stage_id' => ['nullable', 'integer'],
+            'grade_id' => ['nullable', 'integer'],
+            'track_id' => ['nullable', 'integer'],
+        ]);
+
+        $requestedStatus = $validated['status'] ?? null;
         $currentStatus = $item->status ?? 'draft';
         $nextStatus = in_array($requestedStatus, ['draft', 'published'], true)
             ? $requestedStatus
@@ -328,6 +378,12 @@ class TeacherManagementController extends Controller
         }
 
         try {
+            foreach (['stage_id', 'grade_id', 'track_id'] as $scopeColumn) {
+                if (array_key_exists($scopeColumn, $validated)) {
+                    $item->{$scopeColumn} = $validated[$scopeColumn];
+                }
+            }
+
             $item->status = $nextStatus;
             $item->published_at = $nextStatus === 'published' ? ($item->published_at ?? now()) : null;
             $item->save();
@@ -345,10 +401,52 @@ class TeacherManagementController extends Controller
             ], 500);
         }
 
+        $notifiedStudents = 0;
+        if ($nextStatus === 'published' && $currentStatus !== 'published') {
+            $targetStudents = User::query()
+                ->where('role', 'user')
+                ->where('stage_id', $item->stage_id)
+                ->where('grade_id', $item->grade_id)
+                ->when($item->track_id, fn ($query) => $query->where('track_id', $item->track_id))
+                ->when(! $item->track_id, fn ($query) => $query->whereNull('track_id'))
+                ->whereHas('devices')
+                ->get();
+
+            $notificationService = app(NotificationService::class);
+            $title = 'سؤال جديد في مادتك';
+            $body = 'تم نشر سؤال جديد في مادتك الدراسية.';
+            $notificationData = [
+                'type' => 'new_question_published',
+                'question_id' => (string) $item->id,
+                'question_type' => $type,
+                'stage_id' => (string) ($item->stage_id ?? ''),
+                'grade_id' => (string) ($item->grade_id ?? ''),
+                'track_id' => (string) ($item->track_id ?? ''),
+            ];
+
+            foreach ($targetStudents as $student) {
+                try {
+                    $pushResult = $notificationService->sendPushOnlyToUser($student, $title, $body, $notificationData);
+                    if ($pushResult['success'] === true) {
+                        $notifiedStudents++;
+                    }
+                } catch (\Throwable $notificationError) {
+                    Log::warning('[TeacherManagementController] Failed to notify student about published question', [
+                        'student_id' => $student->id,
+                        'question_id' => $item->id,
+                        'error' => $notificationError->getMessage(),
+                    ]);
+                }
+            }
+        }
+
         return response()->json([
             'success' => true,
-            'message' => $nextStatus === 'published' ? 'تم نشر السؤال بنجاح' : 'تم إلغاء نشر السؤال بنجاح',
+            'message' => $nextStatus === 'published'
+                ? 'تم نشر السؤال وإرسال الإشعار للطلاب المستهدفين بنجاح'
+                : 'تم إلغاء نشر السؤال بنجاح',
             'status' => $item->status,
+            'notified_students' => $notifiedStudents,
             'item' => $item,
         ]);
     }
@@ -492,6 +590,7 @@ class TeacherManagementController extends Controller
                 'badge_text' => ['nullable', 'string', 'max:120'],
                 'file_url' => ['nullable', 'string', 'max:2048'],
                 'explanation_video_url' => ['nullable', 'string', 'max:2048'],
+                'difficulty' => ['sometimes', 'string', 'in:easy,medium,hard'],
                 'status' => ['nullable', 'in:draft,published'],
             ],
             'true_false' => [
@@ -506,6 +605,7 @@ class TeacherManagementController extends Controller
                 'badge_text' => ['nullable', 'string', 'max:120'],
                 'file_url' => ['nullable', 'string', 'max:2048'],
                 'explanation_video_url' => ['nullable', 'string', 'max:2048'],
+                'difficulty' => ['sometimes', 'string', 'in:easy,medium,hard'],
                 'status' => ['nullable', 'in:draft,published'],
             ],
             'daily_challenge' => [
@@ -523,6 +623,7 @@ class TeacherManagementController extends Controller
                 'expires_in_hours' => ['nullable', 'integer', 'min:1', 'max:720'],
                 'file_url' => ['nullable', 'string', 'max:2048'],
                 'explanation_video_url' => ['nullable', 'string', 'max:2048'],
+                'difficulty' => ['sometimes', 'string', 'in:easy,medium,hard'],
                 'status' => ['nullable', 'in:draft,published'],
             ],
             'comparison' => [
@@ -539,6 +640,7 @@ class TeacherManagementController extends Controller
                 'badge_text' => ['nullable', 'string', 'max:120'],
                 'file_url' => ['nullable', 'string', 'max:2048'],
                 'explanation_video_url' => ['nullable', 'string', 'max:2048'],
+                'difficulty' => ['sometimes', 'string', 'in:easy,medium,hard'],
                 'status' => ['nullable', 'in:draft,published'],
             ],
             'find_the_bug' => [
@@ -554,6 +656,7 @@ class TeacherManagementController extends Controller
                 'badge_text' => ['nullable', 'string', 'max:120'],
                 'file_url' => ['nullable', 'string', 'max:2048'],
                 'explanation_video_url' => ['nullable', 'string', 'max:2048'],
+                'difficulty' => ['sometimes', 'string', 'in:easy,medium,hard'],
                 'status' => ['nullable', 'in:draft,published'],
             ],
             'cloud_capsule' => [
@@ -571,6 +674,7 @@ class TeacherManagementController extends Controller
                 'badge_text' => ['nullable', 'string', 'max:120'],
                 'file_url' => ['nullable', 'string', 'max:2048'],
                 'explanation_video_url' => ['nullable', 'string', 'max:2048'],
+                'difficulty' => ['sometimes', 'string', 'in:easy,medium,hard'],
                 'status' => ['nullable', 'in:draft,published'],
             ],
             'live_duel' => [
@@ -590,6 +694,7 @@ class TeacherManagementController extends Controller
                 'questions.*.options' => ['required', 'array', 'size:4'],
                 'questions.*.options.*' => ['nullable', 'string'],
                 'questions.*.correctIndex' => ['required', 'integer', 'min:0', 'max:3'],
+                'difficulty' => ['sometimes', 'string', 'in:easy,medium,hard'],
                 'status' => ['nullable', 'in:draft,published'],
             ],
         ][$type] ?? null;

@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 use App\Models\Feed;
 use App\Models\QuestionExplanation;
+use App\Models\Subject;
 use App\Models\User;
 use App\Traits\SyncsToFeed;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
@@ -33,6 +34,10 @@ class CloudCapsuleChallenge extends Model
 
     protected $fillable = [
         'user_id',
+        'subject_id',
+        'stage_id',
+        'grade_id',
+        'track_id',
         'title',
         'subject',
         'school_grade',
@@ -46,6 +51,7 @@ class CloudCapsuleChallenge extends Model
         'mood_text',
         'reveal_label',
         'icon',
+        'difficulty',
         'status',
         'published_at',
     ];
@@ -54,6 +60,7 @@ class CloudCapsuleChallenge extends Model
     {
         return [
             'unit_number' => 'integer',
+            'subject_id' => 'integer',
             'published_at' => 'datetime',
         ];
     }
@@ -61,6 +68,11 @@ class CloudCapsuleChallenge extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function subject(): BelongsTo
+    {
+        return $this->belongsTo(Subject::class);
     }
 
     public function explanation(): MorphOne

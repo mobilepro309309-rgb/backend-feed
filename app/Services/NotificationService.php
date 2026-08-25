@@ -107,6 +107,34 @@ class NotificationService
         ];
     }
 
+    public function sendPushOnlyToUser(User $user, string $title, string $body, array $data = []): array
+    {
+        $devices = UserDevice::where('user_id', $user->id)
+            ->whereNotNull('fcm_token')
+            ->where('fcm_token', '!=', '')
+            ->get();
+
+        $firebaseResults = [];
+        foreach ($devices as $device) {
+            $result = $this->firebaseService->sendNotification(
+                $device->fcm_token,
+                $title,
+                $body,
+                $data
+            );
+
+            $firebaseResults[] = [
+                'device_id' => $device->id,
+                'result' => $result,
+            ];
+        }
+
+        return [
+            'success' => collect($firebaseResults)->contains(fn (array $delivery): bool => ($delivery['result']['success'] ?? false) === true),
+            'firebase' => $firebaseResults,
+        ];
+    }
+
     public function sendNotificationToDeviceTokens(User $user, string $title, string $body, array $data = [], array $deviceTokens = []): array
     {
         $notification = Notification::create([

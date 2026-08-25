@@ -6,6 +6,7 @@ namespace App\Models\Challenges;
 
 use App\Models\Feed;
 use App\Models\QuestionExplanation;
+use App\Models\Subject;
 use App\Models\User;
 use App\Traits\SyncsToFeed;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -32,6 +33,10 @@ class DailyChallenge extends Model
 
     protected $fillable = [
         'user_id',
+        'subject_id',
+        'stage_id',
+        'grade_id',
+        'track_id',
         'title',
         'subject',
         'school_grade',
@@ -44,6 +49,7 @@ class DailyChallenge extends Model
         'badge_text',
         'reward_text',
         'expires_in_hours',
+        'difficulty',
         'status',
         'published_at',
     ];
@@ -52,6 +58,7 @@ class DailyChallenge extends Model
     {
         return [
             'options' => 'array',
+            'subject_id' => 'integer',
             'correct_answer_index' => 'integer',
             'unit_number' => 'integer',
             'expires_in_hours' => 'integer',
@@ -62,6 +69,11 @@ class DailyChallenge extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function subject(): BelongsTo
+    {
+        return $this->belongsTo(Subject::class);
     }
 
     public function explanation(): MorphOne

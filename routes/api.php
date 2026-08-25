@@ -146,6 +146,7 @@ $apiRoutes = function (): void {
         Route::apiResource('admin/specialized-subjects', SpecializedSubjectController::class);
         Route::get('/admin/users', [AdminUsersController::class, 'index']);
         Route::put('/admin/users/{user}', [AdminUsersController::class, 'update']);
+        Route::put('/admin/user-role', [AdminRoleController::class, 'updateUserRole']);
         Route::delete('/admin/users/{user}', [AdminUsersController::class, 'destroy']);
         Route::get('/admin/posts', [AdminHomeController::class, 'getPosts']);
         Route::get('/admin/pending-posts', [AdminHomeController::class, 'pendingPosts']);
