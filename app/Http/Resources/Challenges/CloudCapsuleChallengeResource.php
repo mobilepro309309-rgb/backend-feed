@@ -17,6 +17,7 @@ class CloudCapsuleChallengeResource extends JsonResource
             'id' => $this->id,
             'user_id' => $this->user_id,
             'file_url' => $this->file_url ?? null,
+            'explanation' => $this->getRawOriginal('explanation'),
             'title' => $this->title,
             'subject' => $this->subject,
             'intro_text' => $this->intro_text,

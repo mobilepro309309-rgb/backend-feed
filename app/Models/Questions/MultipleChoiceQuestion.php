@@ -39,6 +39,7 @@ class MultipleChoiceQuestion extends Model
         'term',
         'unit_number',
         'question',
+        'explanation',
         'file_url',
         'options',
         'correct_index',

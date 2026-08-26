@@ -44,6 +44,7 @@ class CloudCapsuleChallenge extends Model
         'term',
         'unit_number',
         'intro_text',
+        'explanation',
         'file_url',
         'badge_text',
         'reveal_text',

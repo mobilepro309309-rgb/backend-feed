@@ -87,6 +87,20 @@ class UserController extends Controller
         ]);
     }
 
+    public function toggleNotifications(Request $request)
+    {
+        $user = $request->user();
+        $user->notifications_enabled = ! (bool) $user->notifications_enabled;
+        $user->save();
+
+        return response()->json([
+            'message' => $user->notifications_enabled
+                ? 'تم تفعيل الإشعارات بنجاح'
+                : 'تم إيقاف الإشعارات بنجاح',
+            'notifications_enabled' => (bool) $user->notifications_enabled,
+        ]);
+    }
+
     public function ping(Request $request)
     {
         $user = $request->user();
@@ -189,6 +203,7 @@ class UserController extends Controller
             'latitude' => $address?->latitude,
             'longitude' => $address?->longitude,
             'theme_mode' => $user->theme_mode,
+            'notifications_enabled' => (bool) $user->notifications_enabled,
             'wallet' => [
                 'balance' => $walletBalance,
             ],

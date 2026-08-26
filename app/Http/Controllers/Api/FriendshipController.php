@@ -5,8 +5,7 @@ namespace App\Http\Controllers\Api;
 use Illuminate\Http\{JsonResponse, Request};
 use Illuminate\Support\Facades\{DB, Log};
 
-use App\Http\Controllers\Controller;
-use App\Http\Controllers\ChatController as BaseChatController;
+use App\Http\Controllers\{ChatController as BaseChatController, Controller};
 use App\Models\{Chat, ChatParticipant, Friendship, User};
 use App\Services\NotificationService;
 
@@ -28,6 +27,8 @@ class FriendshipController extends Controller
         if (! in_array($type, ['colleagues', 'nearby', 'teachers'], true)) {
             return response()->json(['message' => 'Invalid type parameter.'], 422);
         }
+
+        $search = trim((string) $request->query('search', ''));
 
         if ($type === 'teachers') {
             $teacherFriendships = Friendship::query()
@@ -69,7 +70,6 @@ class FriendshipController extends Controller
         }
 
         if ($type === 'nearby') {
-            $search = trim((string) $request->query('search', ''));
             $scopeStageId = $user->stage_id;
             $scopeGradeId = $user->grade_id;
             $scopeTrackId = $user->track_id;
@@ -139,15 +139,14 @@ class FriendshipController extends Controller
                 ->where('role', 'user')
                 ->where('stage_id', $scopeStageId)
                 ->where('grade_id', $scopeGradeId)
-                ->when($scopeTrackId !== null, fn ($query) => $query->where('track_id', $scopeTrackId))
-                ->when($scopeTrackId === null, fn ($query) => $query->whereNull('track_id'))
                 ->when($search !== '', function ($query) use ($search) {
                     $query->where(function ($searchQuery) use ($search) {
                         $searchQuery->where('name', 'like', "%{$search}%")
                             ->orWhere('phone', 'like', "%{$search}%")
                             ->orWhere('id', is_numeric($search) ? (int) $search : 0);
                     });
-                });
+                })
+                ->oldest('created_at');
 
             Log::info('[NearbyColleagues] query prepared', [
                 'user_id' => $user->id,
@@ -165,8 +164,10 @@ class FriendshipController extends Controller
                 ->when(count($blockedIds) > 0, function ($query) use ($blockedIds) {
                     $query->whereNotIn('id', $blockedIds);
                 })
+                ->when(count($acceptedIds) > 0, function ($query) use ($acceptedIds) {
+                    $query->whereNotIn('id', $acceptedIds);
+                })
                 ->get(['id', 'name', 'email', 'phone', 'school_grade', 'stage_id', 'grade_id', 'track_id'])
-                ->sortBy(fn (User $friend): string => (string) $friend->name)
                 ->map(function (User $friend) use ($pendingSentIds, $acceptedIds) {
                     return array_merge($friend->toArray(), [
                         'friendship_status' => in_array($friend->id, $acceptedIds, true)
@@ -226,6 +227,14 @@ class FriendshipController extends Controller
 
         $users = User::with('address')
             ->whereIn('id', $friendIds)
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($searchQuery) use ($search) {
+                    $searchQuery->where('name', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%")
+                        ->orWhere('id', is_numeric($search) ? (int) $search : 0);
+                });
+            })
+            ->oldest('created_at')
             ->get(['id', 'name', 'email', 'phone', 'school_grade'])
             ->map(function (User $friend) use ($friendshipMeta, $user) {
                 $meta = $friendshipMeta[$friend->id] ?? [];

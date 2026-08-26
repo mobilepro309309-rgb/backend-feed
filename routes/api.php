@@ -78,6 +78,7 @@ $apiRoutes = function (): void {
         Route::get('/me', [AuthController::class, 'me']);
         Route::get('/online-users', [UserController::class, 'onlineUsers']);
         Route::post('/user/ping', [UserController::class, 'ping']);
+        Route::post('/user/toggle-notifications', [UserController::class, 'toggleNotifications']);
         Route::post('/logout', [AuthController::class, 'logout']);
 
         // Store device push token for authenticated user

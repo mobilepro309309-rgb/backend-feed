@@ -30,7 +30,7 @@ class DailyChallengeController extends Controller
     {
         $user = $request->user();
         $items = $this->applyQuestionListingFilters(
-            DailyChallenge::query()->with('user'),
+            DailyChallenge::query()->with(['user', 'explanation']),
             $request
         )->latest('created_at')->get();
 
@@ -56,6 +56,7 @@ class DailyChallengeController extends Controller
                     'status' => $item->status ?? 'draft',
                     'badge_text' => $item->badge_text,
                     'file_url' => $item->file_url ?? null,
+                    'explanation' => $item->getRawOriginal('explanation'),
                     'explanation_video_url' => $item->explanation?->video_url ?? null,
                     'prompt' => $item->prompt,
                     'question' => $item->prompt,
@@ -161,6 +162,7 @@ class DailyChallengeController extends Controller
                 'correct_index' => is_numeric($correctIndex) ? (int) $correctIndex : null,
                 'badge_text' => $item->badge_text,
                 'file_url' => $item->file_url ?? null,
+                'explanation' => $item->getRawOriginal('explanation'),
                 'explanation_video_url' => $item->explanation?->video_url ?? null,
                 'reward_text' => $item->reward_text,
                 'quizType' => 'daily_challenge',
@@ -200,6 +202,7 @@ class DailyChallengeController extends Controller
             'term' => ['nullable', 'in:1,2'],
             'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
             'prompt' => ['nullable', 'string'],
+            'explanation' => ['nullable', 'string'],
             'options' => ['required', 'array', 'min:2'],
             'options.*' => ['nullable', 'string'],
             'correct_answer_index' => ['required', 'integer', 'min:0', 'max:3'],
@@ -240,6 +243,7 @@ class DailyChallengeController extends Controller
             'term' => (int) ($validated['term'] ?? 1),
             'unit_number' => isset($validated['unit_number']) && $validated['unit_number'] !== '' ? (int) $validated['unit_number'] : null,
             'prompt' => $prompt ?: null,
+            'explanation' => $validated['explanation'] ?? null,
             'file_url' => $validated['file_url'] ?? null,
             'options' => array_values(array_map(fn($value) => (string) $value, $validated['options'])),
             'correct_answer_index' => (int) $validated['correct_answer_index'],
@@ -406,6 +410,7 @@ class DailyChallengeController extends Controller
             'correct_index' => is_numeric($correctIndex) ? (int) $correctIndex : null,
             'badge_text' => $item->badge_text,
             'file_url' => $item->file_url ?? null,
+            'explanation' => $item->getRawOriginal('explanation'),
             'reward_text' => $item->reward_text,
             'published_at' => $publishedAt->toDateTimeString(),
             'expires_in_hours' => $item->expires_in_hours,

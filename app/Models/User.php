@@ -136,6 +136,7 @@ class User extends Authenticatable
         'password',
         'is_online',
         'last_seen',
+        'notifications_enabled',
         'referral_code',
     ];
 
@@ -171,6 +172,7 @@ class User extends Authenticatable
             'theme_mode' => 'string',
             'is_online' => 'boolean',
             'last_seen' => 'datetime',
+            'notifications_enabled' => 'boolean',
         ];
     }
 

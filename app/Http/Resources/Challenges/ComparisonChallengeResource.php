@@ -21,7 +21,7 @@ class ComparisonChallengeResource extends JsonResource
             'right_label' => $this->right_label,
             'left_text' => $this->left_text,
             'right_text' => $this->right_text,
-            'explanation' => $this->explanation,
+            'explanation' => $this->getRawOriginal('explanation'),
             'badge_text' => $this->badge_text,
             'status' => $this->status,
             'published_at' => $this->published_at,

@@ -43,6 +43,7 @@ class DailyChallenge extends Model
         'term',
         'unit_number',
         'prompt',
+        'explanation',
         'file_url',
         'options',
         'correct_answer_index',

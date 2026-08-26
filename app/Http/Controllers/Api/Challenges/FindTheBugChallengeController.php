@@ -27,7 +27,7 @@ class FindTheBugChallengeController extends Controller
     {
         $user = $request->user();
         $items = $this->applyQuestionListingFilters(
-            FindTheBugChallenge::query()->with('user'),
+            FindTheBugChallenge::query()->with(['user', 'explanation']),
             $request
         )->latest('created_at')->get();
 
@@ -47,6 +47,7 @@ class FindTheBugChallengeController extends Controller
                     'status' => $item->status ?? 'draft',
                     'badge_text' => $item->badge_text,
                     'file_url' => $item->file_url ?? null,
+                    'explanation' => $item->getRawOriginal('explanation'),
                     'explanation_video_url' => $item->explanation?->video_url ?? null,
                     'prompt' => $item->prompt,
                     'question' => $item->prompt,
@@ -136,6 +137,7 @@ class FindTheBugChallengeController extends Controller
                 'correct_index' => (int) ($item->correct_answer_index ?? 0),
                 'badge_text' => $item->badge_text,
                 'file_url' => $item->file_url ?? null,
+                'explanation' => $item->getRawOriginal('explanation'),
                 'explanation_video_url' => $item->explanation?->video_url ?? null,
                 'quizType' => 'find_the_bug',
                 'questionType' => 'find_the_bug',
@@ -174,6 +176,7 @@ class FindTheBugChallengeController extends Controller
             'term' => ['nullable', 'in:1,2'],
             'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
             'prompt' => ['nullable', 'string'],
+            'explanation' => ['nullable', 'string'],
             'options' => ['required', 'array', 'min:2'],
             'options.*' => ['nullable', 'string'],
             'correct_answer_index' => ['required', 'integer', 'min:0', 'max:3'],
@@ -212,6 +215,7 @@ class FindTheBugChallengeController extends Controller
             'term' => (int) ($validated['term'] ?? 1),
             'unit_number' => isset($validated['unit_number']) && $validated['unit_number'] !== '' ? (int) $validated['unit_number'] : null,
             'prompt' => $prompt ?: null,
+            'explanation' => $validated['explanation'] ?? null,
             'file_url' => $validated['file_url'] ?? null,
             'options' => array_values(array_map(fn($value) => (string) $value, $validated['options'])),
             'correct_answer_index' => (int) $validated['correct_answer_index'],

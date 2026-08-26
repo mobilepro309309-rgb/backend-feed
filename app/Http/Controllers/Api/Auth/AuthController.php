@@ -336,6 +336,7 @@ class AuthController extends Controller
             'referred_count' => $referralsCount,
             'referrals_count' => $referralsCount,
             'referral_count' => $referralsCount,
+            'notifications_enabled' => (bool) $user->notifications_enabled,
             'avatar_url' => $avatarUrl,
             'avatar' => $avatarUrl,
             'profile_image' => $avatarUrl,

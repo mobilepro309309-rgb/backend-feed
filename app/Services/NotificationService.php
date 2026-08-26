@@ -47,6 +47,14 @@ class NotificationService
 
     public function sendNotification(User $user, string $title, string $body, array $data = [], ?string $excludeToken = null): array
     {
+        if ($user->notifications_enabled === false) {
+            return [
+                'skipped' => true,
+                'reason' => 'notifications_disabled',
+                'user_id' => $user->id,
+            ];
+        }
+
         $notification = Notification::create([
             'title' => $title,
             'body' => $body,
@@ -109,6 +117,14 @@ class NotificationService
 
     public function sendPushOnlyToUser(User $user, string $title, string $body, array $data = []): array
     {
+        if ($user->notifications_enabled === false) {
+            return [
+                'skipped' => true,
+                'reason' => 'notifications_disabled',
+                'user_id' => $user->id,
+            ];
+        }
+
         $devices = UserDevice::where('user_id', $user->id)
             ->whereNotNull('fcm_token')
             ->where('fcm_token', '!=', '')
@@ -137,6 +153,14 @@ class NotificationService
 
     public function sendNotificationToDeviceTokens(User $user, string $title, string $body, array $data = [], array $deviceTokens = []): array
     {
+        if ($user->notifications_enabled === false) {
+            return [
+                'skipped' => true,
+                'reason' => 'notifications_disabled',
+                'user_id' => $user->id,
+            ];
+        }
+
         $notification = Notification::create([
             'title' => $title,
             'body' => $body,

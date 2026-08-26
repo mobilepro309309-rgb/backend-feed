@@ -17,6 +17,7 @@ class FindTheBugChallengeResource extends JsonResource
             'id' => $this->id,
             'user_id' => $this->user_id,
             'file_url' => $this->file_url ?? null,
+            'explanation' => $this->getRawOriginal('explanation'),
             'title' => $this->title,
             'subject' => $this->subject,
             'bug_description' => $this->prompt,

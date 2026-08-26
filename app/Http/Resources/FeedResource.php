@@ -164,6 +164,7 @@ class FeedResource extends JsonResource
         }
 
         if (is_array($details) && $feedable) {
+            $details['explanation'] = $feedable->getRawOriginal('explanation');
             $details['explanation_video_url'] = $this->resolveExplanationVideoUrl($feedable);
 
             if ($feedable->relationLoaded('user') && $feedable->user) {

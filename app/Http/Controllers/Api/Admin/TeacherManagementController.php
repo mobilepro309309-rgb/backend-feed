@@ -570,7 +570,10 @@ class TeacherManagementController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'تم تعديل السؤال بنجاح',
-            'item' => $item,
+            'item' => array_merge($item->toArray(), [
+                'explanation' => $item->getRawOriginal('explanation'),
+                'explanation_video_url' => $videoUrl,
+            ]),
         ]);
     }
 
@@ -584,6 +587,7 @@ class TeacherManagementController extends Controller
                 'term' => ['nullable', 'in:1,2'],
                 'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
                 'question' => ['nullable', 'string'],
+                'explanation' => ['nullable', 'string'],
                 'options' => ['required', 'array', 'min:2'],
                 'options.*' => ['nullable', 'string'],
                 'correct_index' => ['required', 'integer', 'min:0', 'max:3'],
@@ -615,6 +619,7 @@ class TeacherManagementController extends Controller
                 'term' => ['nullable', 'in:1,2'],
                 'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
                 'prompt' => ['nullable', 'string'],
+                'explanation' => ['nullable', 'string'],
                 'options' => ['required', 'array', 'min:2'],
                 'options.*' => ['nullable', 'string'],
                 'correct_answer_index' => ['required', 'integer', 'min:0', 'max:3'],
@@ -650,6 +655,7 @@ class TeacherManagementController extends Controller
                 'term' => ['nullable', 'in:1,2'],
                 'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
                 'prompt' => ['nullable', 'string'],
+                'explanation' => ['nullable', 'string'],
                 'options' => ['required', 'array', 'min:2'],
                 'options.*' => ['nullable', 'string'],
                 'correct_answer_index' => ['required', 'integer', 'min:0', 'max:3'],
@@ -666,6 +672,7 @@ class TeacherManagementController extends Controller
                 'term' => ['nullable', 'in:1,2'],
                 'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
                 'intro_text' => ['nullable', 'string'],
+                'explanation' => ['nullable', 'string'],
                 'reveal_text' => ['required', 'string'],
                 'tip_text' => ['nullable', 'string'],
                 'mood_text' => ['nullable', 'string'],
@@ -684,6 +691,7 @@ class TeacherManagementController extends Controller
                 'term' => ['nullable', 'in:1,2'],
                 'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
                 'challenge_text' => ['nullable', 'string'],
+                'explanation' => ['nullable', 'string'],
                 'badge_text' => ['nullable', 'string', 'max:80'],
                 'file_url' => ['nullable', 'string', 'max:2048'],
                 'explanation_video_url' => ['nullable', 'string', 'max:2048'],

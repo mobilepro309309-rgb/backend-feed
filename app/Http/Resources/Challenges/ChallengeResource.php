@@ -17,6 +17,7 @@ class ChallengeResource extends JsonResource
             'user_id' => $this->user_id,
             'title' => $this->title,
             'subject' => $this->subject,
+            'explanation' => $this->getRawOriginal('explanation'),
             'badge_text' => $this->badge_text,
             'status' => $this->status,
             'published_at' => $this->published_at,

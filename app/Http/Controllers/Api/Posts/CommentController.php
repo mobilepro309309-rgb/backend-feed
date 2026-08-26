@@ -163,8 +163,10 @@ class CommentController extends Controller
 
         $authorGender = $this->normalizeGender($post->user?->gender);
         $userGender = $this->normalizeGender($user->gender);
+        $normalizedUserRole = mb_strtolower(trim((string) ($user->role ?? '')));
+        $isStaffUser = $normalizedUserRole !== '' && $normalizedUserRole !== 'user';
 
-        if (!$user->isAdmin() && (!$authorGender || !$userGender || $userGender !== $authorGender)) {
+        if (!$isStaffUser && (!$authorGender || !$userGender || $userGender !== $authorGender)) {
             return response()->json([
                 'message' => 'غير مسموح بالتعليق على هذا المنشور',
             ], 403);

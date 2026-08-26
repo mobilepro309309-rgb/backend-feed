@@ -40,6 +40,7 @@ class CloudCapsuleChallengeController extends Controller
                     'status' => $item->status ?? 'draft',
                     'badge_text' => $item->badge_text,
                     'file_url' => $item->file_url ?? null,
+                    'explanation' => $item->getRawOriginal('explanation'),
                     'explanation_video_url' => $item->explanation?->video_url ?? null,
                     'prompt' => $prompt,
                     'question' => $item->reveal_text,
@@ -94,6 +95,7 @@ class CloudCapsuleChallengeController extends Controller
             'term' => ['nullable', 'in:1,2'],
             'unit_number' => ['nullable', 'integer', 'min:1', 'max:50'],
             'intro_text' => ['nullable', 'string'],
+            'explanation' => ['nullable', 'string'],
             'file_url' => ['nullable', 'string', 'max:2048'],
             'explanation_video_url' => ['nullable', 'string', 'max:2048'],
             'badge_text' => ['nullable', 'string', 'max:120'],
@@ -122,6 +124,7 @@ class CloudCapsuleChallengeController extends Controller
         $challenge->term = (int) ($validated['term'] ?? 1);
         $challenge->unit_number = isset($validated['unit_number']) && $validated['unit_number'] !== '' ? (int) $validated['unit_number'] : null;
         $challenge->intro_text = $validated['intro_text'] ?? null;
+        $challenge->explanation = $validated['explanation'] ?? null;
         $challenge->file_url = $validated['file_url'] ?? null;
         $challenge->badge_text = $validated['badge_text'] ?? null;
         $challenge->reveal_text = $validated['reveal_text'];
@@ -186,6 +189,7 @@ class CloudCapsuleChallengeController extends Controller
                 'title' => $challenge->title,
                 'subject' => $challenge->subject,
                 'file_url' => $challenge->file_url ?? null,
+                'explanation' => $challenge->getRawOriginal('explanation'),
                 'status' => $challenge->status,
                 'user' => [
                     'id' => $user->id,
