@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Posts\StorePostRequest;
 use App\Models\PostVote;
 use App\Models\Posts\Post;
+use App\Models\Subject;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,29 @@ use App\Services\FeedCacheService;
 class PostController extends Controller
 {
     public function __construct(private readonly FeedCacheService $feedCache) {}
+
+    private function resolveSubjectNameAr(Post $post): ?string
+    {
+        $subjectValue = trim((string) ($post->subject ?? ''));
+
+        if ($subjectValue === '') {
+            return null;
+        }
+
+        $subjectQuery = Subject::query();
+
+        if (ctype_digit($subjectValue)) {
+            $subject = $subjectQuery->whereKey((int) $subjectValue)->first();
+        } else {
+            $subject = $subjectQuery->where('code', $subjectValue)->first();
+        }
+
+        if ($subject?->name_ar) {
+            return $subject->name_ar;
+        }
+
+        return preg_match('/[\x{0600}-\x{06FF}]/u', $subjectValue) ? $subjectValue : null;
+    }
 
     private function rejectVideoUploadForRegularUsers(Request $request, array $attachments = []): ?\Illuminate\Http\JsonResponse
     {
@@ -118,6 +142,7 @@ class PostController extends Controller
                 'id' => $post->id,
                 'content' => $post->content,
                 'subject' => $post->subject,
+                'subject_name_ar' => $this->resolveSubjectNameAr($post),
                 'image_url' => $post->image_url,
                 'attachments' => $post->attachments,
                 'status' => $post->status,
@@ -201,7 +226,7 @@ class PostController extends Controller
 
         $postData = [
             'user_id' => $user->id,
-            'content' => $validated['content'] ?? '',
+            'content' => $validated['content'] ?? null,
             'subject' => $validated['subject'],
             'unit_number' => isset($validated['unit_number']) && $validated['unit_number'] !== '' ? (int) $validated['unit_number'] : null,
             'image_url' => $validated['image_url'] ?? null,
@@ -425,6 +450,7 @@ class PostController extends Controller
                 'id' => $post->id,
                 'content' => $post->content,
                 'subject' => $post->subject,
+                'subject_name_ar' => $this->resolveSubjectNameAr($post),
                 'image_url' => $post->image_url,
                 'attachments' => $post->attachments,
                 'status' => $post->status,
