@@ -12,6 +12,8 @@ use App\Models\Challenges\LiveDuelChallenge;
 use App\Models\QuestionExplanation;
 use App\Models\Questions\MultipleChoiceQuestion;
 use App\Models\Questions\TrueFalseQuestion;
+use App\Models\SpecializedSubject;
+use App\Models\Subject;
 use App\Models\TeacherScope;
 use App\Models\User;
 use App\Services\NotificationService;
@@ -413,8 +415,19 @@ class TeacherManagementController extends Controller
                 ->get();
 
             $notificationService = app(NotificationService::class);
-            $title = 'سؤال جديد في مادتك';
-            $body = 'تم نشر سؤال جديد في مادتك الدراسية.';
+            $questionTypeLabels = [
+                'multiple_choice' => 'اختيار من متعدد',
+                'true_false' => 'صح أم خطأ',
+                'cloud_capsule' => 'كبسولة سحابية',
+                'daily_challenge' => 'تحدي اليوم',
+                'comparison' => 'مقارنة',
+                'find_the_bug' => 'اكتشف الخطأ',
+                'live_duel' => 'مواجهة مباشرة',
+            ];
+            $subjectName = $this->resolveQuestionSubjectName($item);
+            $questionTypeName = $questionTypeLabels[$type] ?? 'سؤال تفاعلي';
+            $title = "سؤال جديد في {$subjectName}";
+            $body = "جاهز للتحدي؟ تم نشر سؤال {$questionTypeName} جديد في مادة {$subjectName}. ادخل الآن واختبر معلوماتك وحقق تقدماً جديداً!";
             $notificationData = [
                 'type' => 'new_question_published',
                 'question_id' => (string) $item->id,
@@ -706,6 +719,35 @@ class TeacherManagementController extends Controller
                 'status' => ['nullable', 'in:draft,published'],
             ],
         ][$type] ?? null;
+    }
+
+    protected function resolveQuestionSubjectName(object $item): string
+    {
+        $subjectValue = trim((string) ($item->subject_name ?? $item->subject ?? ''));
+        $subjectId = $item->subject_id ?? null;
+
+        $subject = null;
+        if ($subjectValue !== '') {
+            $subject = Subject::query()
+                ->where('code', $subjectValue)
+                ->orWhere('name_en', $subjectValue)
+                ->orWhere('name_ar', $subjectValue)
+                ->first();
+
+            if (! $subject) {
+                $subject = SpecializedSubject::query()
+                    ->where('code', $subjectValue)
+                    ->orWhere('name_en', $subjectValue)
+                    ->orWhere('name_ar', $subjectValue)
+                    ->first();
+            }
+        }
+
+        if (! $subject && is_numeric($subjectId) && (int) $subjectId > 0) {
+            $subject = Subject::find((int) $subjectId) ?? SpecializedSubject::find((int) $subjectId);
+        }
+
+        return trim((string) ($subject?->name_ar ?: $subjectValue ?: 'مادتك الدراسية'));
     }
 
     protected function getModelClassForQuestionType(string $type): ?string

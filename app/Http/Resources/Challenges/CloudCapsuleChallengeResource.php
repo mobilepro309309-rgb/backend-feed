@@ -6,9 +6,12 @@ namespace App\Http\Resources\Challenges;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Http\Resources\Concerns\ResolvesSubjectNameAr;
 
 class CloudCapsuleChallengeResource extends JsonResource
 {
+    use ResolvesSubjectNameAr;
+
     public function toArray($request): array
     {
         $quizAccessService = app(\App\Services\QuizAccessService::class);
@@ -20,6 +23,7 @@ class CloudCapsuleChallengeResource extends JsonResource
             'explanation' => $this->getRawOriginal('explanation'),
             'title' => $this->title,
             'subject' => $this->subject,
+            'subject_name_ar' => $this->resolveSubjectNameAr(),
             'intro_text' => $this->intro_text,
             'badge_text' => $this->badge_text,
             'reveal_text' => $this->reveal_text,

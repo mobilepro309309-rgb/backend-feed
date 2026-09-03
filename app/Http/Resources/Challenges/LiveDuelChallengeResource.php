@@ -6,9 +6,12 @@ namespace App\Http\Resources\Challenges;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Http\Resources\Concerns\ResolvesSubjectNameAr;
 
 class LiveDuelChallengeResource extends JsonResource
 {
+    use ResolvesSubjectNameAr;
+
     public function toArray($request): array
     {
         $quizAccessService = app(\App\Services\QuizAccessService::class);
@@ -20,6 +23,7 @@ class LiveDuelChallengeResource extends JsonResource
             'explanation' => $this->getRawOriginal('explanation'),
             'title' => $this->title,
             'subject' => $this->subject,
+            'subject_name_ar' => $this->resolveSubjectNameAr(),
             'challenge_text' => $this->challenge_text,
             'badge_text' => $this->badge_text,
             'question_count' => $this->question_count,

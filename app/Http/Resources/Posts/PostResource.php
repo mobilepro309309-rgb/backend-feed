@@ -6,15 +6,19 @@ namespace App\Http\Resources\Posts;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Http\Resources\Concerns\ResolvesSubjectNameAr;
 
 class PostResource extends JsonResource
 {
+    use ResolvesSubjectNameAr;
+
     public function toArray($request): array
     {
         return [
             'id' => $this->id,
             'user_id' => $this->user_id,
             'subject' => $this->subject,
+            'subject_name_ar' => $this->resolveSubjectNameAr(),
             'content' => $this->content,
             'image_url' => $this->image_url,
             'attachments' => $this->attachments,

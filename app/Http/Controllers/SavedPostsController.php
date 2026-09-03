@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Models\User;
 use App\Models\Posts\Post;
+use App\Http\Resources\Posts\PostResource;
 
 class SavedPostsController extends Controller
 {
@@ -52,9 +53,19 @@ class SavedPostsController extends Controller
 
         $saved = $user->savedPosts()
             ->with('user')
+            ->withCount(['reactions', 'allComments'])
             ->latest('saved_posts.created_at')
             ->paginate(10);
 
-        return response()->json(['status' => 'success', 'posts' => $saved]);
+        return response()->json([
+            'status' => 'success',
+            'posts' => [
+                'current_page' => $saved->currentPage(),
+                'last_page' => $saved->lastPage(),
+                'per_page' => $saved->perPage(),
+                'total' => $saved->total(),
+                'data' => PostResource::collection($saved->getCollection())->resolve(),
+            ],
+        ]);
     }
 }

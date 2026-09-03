@@ -6,12 +6,16 @@ namespace App\Http\Resources\Questions;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Http\Resources\Concerns\ResolvesSubjectNameAr;
 
 class TrueFalseQuestionResource extends JsonResource
 {
+    use ResolvesSubjectNameAr;
+
     public function toArray($request): array
     {
-        $normalizedCorrectAnswer = $this->correct_answer === 0 ? true : false;
+        $rawCorrectAnswer = $this->getRawOriginal('correct_answer');
+        $normalizedCorrectAnswer = trim((string) $rawCorrectAnswer) === '0';
 
         return [
             'id' => $this->id,
@@ -21,7 +25,9 @@ class TrueFalseQuestionResource extends JsonResource
             'explanation_video_url' => $this->explanation?->video_url ?? null,
             'title' => $this->title,
             'subject' => $this->subject,
+            'subject_name_ar' => $this->resolveSubjectNameAr(),
             'statement' => $this->prompt,
+            'correct_answer_index' => (int) $rawCorrectAnswer,
             'correct_answer' => $normalizedCorrectAnswer,
             'correctAnswer' => $normalizedCorrectAnswer,
             'badge_text' => $this->badge_text,

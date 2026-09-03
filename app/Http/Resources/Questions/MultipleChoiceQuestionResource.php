@@ -6,9 +6,12 @@ namespace App\Http\Resources\Questions;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Http\Resources\Concerns\ResolvesSubjectNameAr;
 
 class MultipleChoiceQuestionResource extends JsonResource
 {
+    use ResolvesSubjectNameAr;
+
     public function toArray($request): array
     {
         $options = is_array($this->options) ? array_values($this->options) : [];
@@ -23,6 +26,7 @@ class MultipleChoiceQuestionResource extends JsonResource
             'explanation_video_url' => $this->explanation?->video_url ?? null,
             'title' => $this->title,
             'subject' => $this->subject,
+            'subject_name_ar' => $this->resolveSubjectNameAr(),
             'question_text' => $this->question,
             'options' => $options,
             'correct_index' => $correctIndex,

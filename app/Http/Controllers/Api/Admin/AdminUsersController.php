@@ -19,8 +19,14 @@ class AdminUsersController extends Controller
         $authUser = $request->user();
         $requestedRole = $this->resolveRoleFilter($request->query('role', 'user'));
         $gradeValue = $this->resolveGradeFilter(
-            $request->query('grade_id', $request->query('stage', $request->query('school_grade')))
+            $request->query('stage', $request->query('school_grade'))
         );
+        $scopeFilters = collect(['stage_id', 'grade_id', 'track_id'])
+            ->mapWithKeys(function (string $field) use ($request): array {
+                $value = $request->query($field);
+                return [$field => is_numeric($value) && (int) $value > 0 ? (int) $value : null];
+            })
+            ->filter();
 
         Log::info('[AdminUsersController@index] incoming request', [
             'auth_user_id' => $authUser?->id,
@@ -41,74 +47,31 @@ class AdminUsersController extends Controller
         $governorateId = $request->query('governorate_id');
         $districtId = $request->query('district_id');
 
-        $teacherAuthorizedGrades = [];
-        if ($authUser && strtolower((string) $authUser->role) === 'teacher') {
-            $teacherAuthorizedGrades = $authUser->teacherScopes()
-                ->pluck('school_grade')
-                ->map(fn ($grade) => $this->resolveGradeFilter($grade))
-                ->filter()
-                ->unique()
-                ->values()
-                ->all();
+        $query = User::query()
+            ->select([
+                'users.id as id',
+                'users.name',
+                'users.email',
+                'users.phone',
+                'users.password',
+                'users.gender',
+                'users.school_grade',
+                'users.role',
+                'users.created_at',
+                'users.id as user_id',
+            ]);
 
-            if (! empty($teacherAuthorizedGrades)) {
-                $allowedRequestGrade = $gradeValue !== null && in_array($gradeValue, $teacherAuthorizedGrades, true)
-                    ? $gradeValue
-                    : null;
+        $this->applyRoleConstraint($query, $requestedRole ?? 'user');
 
-                $query = User::query()
-                    ->select([
-                        'users.id as id',
-                        'users.name',
-                        'users.email',
-                        'users.phone',
-                        'users.password',
-                        'users.gender',
-                        'users.school_grade',
-                        'users.role',
-                        'users.created_at',
-                        'users.id as user_id',
-                    ]);
+        if ($gradeValue !== null) {
+            $query->whereRaw(
+                $this->getGradeNormalizationClause('school_grade', $gradeValue)
+            );
+        }
 
-                $this->applyRoleConstraint($query, $requestedRole ?? 'user');
-
-                $query->where(function ($gradeQuery) use ($teacherAuthorizedGrades, $allowedRequestGrade) {
-                    foreach ($teacherAuthorizedGrades as $authorizedGrade) {
-                        $gradeQuery->orWhereRaw(
-                            $this->getGradeNormalizationClause('school_grade', (string) $authorizedGrade)
-                        );
-                    }
-
-                    if ($allowedRequestGrade !== null) {
-                        $gradeQuery->whereRaw(
-                            $this->getGradeNormalizationClause('school_grade', (string) $allowedRequestGrade)
-                        );
-                    }
-                });
-            } else {
-                $query = User::query()->whereRaw('0 = 1');
-            }
-        } else {
-            $query = User::query()
-                ->select([
-                    'users.id as id',
-                    'users.name',
-                    'users.email',
-                    'users.phone',
-                    'users.password',
-                    'users.gender',
-                    'users.school_grade',
-                    'users.role',
-                    'users.created_at',
-                    'users.id as user_id',
-                ]);
-
-            $this->applyRoleConstraint($query, $requestedRole ?? 'user');
-
-            if ($gradeValue !== null) {
-                $query->whereRaw(
-                    $this->getGradeNormalizationClause('school_grade', $gradeValue)
-                );
+        if ($scopeFilters->isNotEmpty()) {
+            foreach ($scopeFilters as $field => $value) {
+                $query->where("users.{$field}", $value);
             }
         }
 
@@ -139,6 +102,12 @@ class AdminUsersController extends Controller
                 $query->where('user_addresses.city_or_center', $effectiveDistrictName);
             }
         }
+
+        $statsQuery = clone $query;
+        $statsQuery->getQuery()->orders = null;
+        $totalUsers = (clone $statsQuery)->count('users.id');
+        $maleUsers = (clone $statsQuery)->whereIn('gender', ['ولد', 'ذكر', 'male', 'boy'])->count('users.id');
+        $femaleUsers = (clone $statsQuery)->whereIn('gender', ['بنت', 'أنثى', 'انثى', 'female', 'girl'])->count('users.id');
 
         $usersQuery = $query
             ->with('address')
@@ -182,7 +151,12 @@ class AdminUsersController extends Controller
                 'district_id' => $districtId,
                 'label' => $this->formatStageLabel($gradeValue),
             ],
-            'total' => $users->count(),
+            'total' => $totalUsers,
+            'stats' => [
+                'total' => $totalUsers,
+                'male' => $maleUsers,
+                'female' => $femaleUsers,
+            ],
             'users' => $users,
         ]);
     }

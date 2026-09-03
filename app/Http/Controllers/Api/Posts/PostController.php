@@ -18,7 +18,7 @@ class PostController extends Controller
 
     private function resolveSubjectNameAr(Post $post): ?string
     {
-        $subjectValue = trim((string) ($post->subject ?? ''));
+        $subjectValue = ltrim(trim((string) ($post->subject ?? '')), '#');
 
         if ($subjectValue === '') {
             return null;

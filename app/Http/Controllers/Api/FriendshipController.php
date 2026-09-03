@@ -167,6 +167,7 @@ class FriendshipController extends Controller
                 ->when(count($acceptedIds) > 0, function ($query) use ($acceptedIds) {
                     $query->whereNotIn('id', $acceptedIds);
                 })
+                ->with('address')
                 ->get(['id', 'name', 'email', 'phone', 'school_grade', 'stage_id', 'grade_id', 'track_id'])
                 ->map(function (User $friend) use ($pendingSentIds, $acceptedIds) {
                     return array_merge($friend->toArray(), [

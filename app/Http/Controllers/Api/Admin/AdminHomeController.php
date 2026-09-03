@@ -25,112 +25,34 @@ class AdminHomeController extends Controller
     {
         $user = $request->user();
         $userRole = strtolower(trim((string) ($user->role ?? '')));
-        $teacherScopeAccess = null;
 
-        $gradeValue = $this->resolveGradeFilter(
-            $request->query('grade_id', $request->query('stage', $request->query('school_grade')))
-        );
+        $scopeFilters = collect(['stage_id', 'grade_id', 'track_id'])
+            ->mapWithKeys(function (string $field) use ($request): array {
+                $value = $request->query($field);
+                return [$field => is_numeric($value) && (int) $value > 0 ? (int) $value : null];
+            })
+            ->filter();
+        $gradeValue = $scopeFilters->has('grade_id')
+            ? null
+            : $this->resolveGradeFilter($request->query('stage', $request->query('school_grade')));
         $subjectValue = $this->resolveListingSubject($request);
-
-        if ($userRole === 'teacher') {
-            $teacherScopeAccess = $this->resolveTeacherScopeAccess($user);
-            $allowedGrades = $teacherScopeAccess['grades'];
-            $allowedSubjects = $teacherScopeAccess['subjects'];
-
-            if ($gradeValue !== null && ! empty($allowedGrades) && ! in_array($gradeValue, $allowedGrades, true)) {
-                $gradeValue = null;
-            }
-
-            if ($subjectValue !== null && ! empty($allowedSubjects)) {
-                $normalizedSubject = strtolower(trim((string) $subjectValue));
-                if (! in_array($normalizedSubject, $allowedSubjects, true)) {
-                    $subjectValue = null;
-                }
-            }
-        }
-
-        if ($userRole === 'teacher' && $teacherScopeAccess !== null && empty($teacherScopeAccess['grades']) && empty($teacherScopeAccess['subjects'])) {
-            return response()->json([
-                'message' => 'لا توجد صلاحيات مخصصة لهذا المدرس.',
-                'filter' => [
-                    'grade_id' => null,
-                    'stage' => null,
-                    'label' => 'لا توجد صلاحيات',
-                ],
-                'stats' => [
-                    'active_students_count' => 0,
-                    'posts_count' => 0,
-                    'questions_count' => 0,
-                    'total_content_count' => 0,
-                    'pending_requests_count' => 0,
-                    'requests_count' => 0,
-                    'users_count' => 0,
-                    'interactive_videos_count' => 0,
-                    'teachers_count' => 0,
-                    'admins_count' => 0,
-                ],
-            ]);
-        }
 
         $activeStudentsQuery = User::query()
             ->where('role', 'user');
 
         $postsQuery = Post::query();
 
-        if ($userRole === 'teacher' && $teacherScopeAccess !== null) {
-            $allowedGrades = $teacherScopeAccess['grades'];
-            $allowedSubjects = $teacherScopeAccess['subjects'];
-
-            if (! empty($allowedGrades)) {
-                $activeStudentsQuery->where(function ($gradeQuery) use ($allowedGrades) {
-                    foreach ($allowedGrades as $index => $allowedGrade) {
-                        $normalizedGrade = TeacherScope::normalizeGradeValue($allowedGrade);
-                        if ($normalizedGrade === null || $normalizedGrade === '') {
-                            continue;
-                        }
-
-                        $gradeClause = $this->getGradeNormalizationClause('school_grade', (string) $normalizedGrade);
-                        if ($index === 0) {
-                            $gradeQuery->whereRaw($gradeClause);
-                        } else {
-                            $gradeQuery->orWhereRaw($gradeClause);
-                        }
-                    }
-                });
-
-                $postsQuery->whereHas('user', function ($userQuery) use ($allowedGrades) {
-                    foreach ($allowedGrades as $index => $allowedGrade) {
-                        $normalizedGrade = TeacherScope::normalizeGradeValue($allowedGrade);
-                        if ($normalizedGrade === null || $normalizedGrade === '') {
-                            continue;
-                        }
-
-                        $gradeClause = $this->getGradeNormalizationClause('users.school_grade', (string) $normalizedGrade);
-                        if ($index === 0) {
-                            $userQuery->whereRaw($gradeClause);
-                        } else {
-                            $userQuery->orWhereRaw($gradeClause);
-                        }
-                    }
-                });
-            }
-
-            if (! empty($allowedSubjects)) {
-                $postsQuery->where(function ($subjectQuery) use ($allowedSubjects) {
-                    foreach ($allowedSubjects as $index => $subject) {
-                        $normalizedSubject = strtolower(trim((string) $subject));
-                        if ($normalizedSubject === '') {
-                            continue;
-                        }
-
-                        if ($index === 0) {
-                            $subjectQuery->whereRaw('LOWER(TRIM(subject)) = ?', [$normalizedSubject]);
-                        } else {
-                            $subjectQuery->orWhereRaw('LOWER(TRIM(subject)) = ?', [$normalizedSubject]);
-                        }
-                    }
-                });
-            }
+        if ($scopeFilters->isNotEmpty()) {
+            $activeStudentsQuery->where(function ($query) use ($scopeFilters): void {
+                foreach ($scopeFilters as $field => $value) {
+                    $query->where($field, $value);
+                }
+            });
+            $postsQuery->whereHas('user', function ($userQuery) use ($scopeFilters): void {
+                foreach ($scopeFilters as $field => $value) {
+                    $userQuery->where($field, $value);
+                }
+            });
         }
 
         if ($gradeValue !== null) {
@@ -181,51 +103,19 @@ class AdminHomeController extends Controller
             $model = $builderConfig['model'];
             $query = $model::query();
 
-            if ($userRole === 'teacher' && $teacherScopeAccess !== null) {
-                $allowedGrades = $teacherScopeAccess['grades'];
-                $allowedSubjects = $teacherScopeAccess['subjects'];
-
-                if (! empty($allowedGrades)) {
-                    $query->whereHas('user', function ($userQuery) use ($allowedGrades) {
-                        foreach ($allowedGrades as $index => $allowedGrade) {
-                            $normalizedGrade = TeacherScope::normalizeGradeValue($allowedGrade);
-                            if ($normalizedGrade === null || $normalizedGrade === '') {
-                                continue;
-                            }
-
-                            $gradeClause = $this->getGradeNormalizationClause('users.school_grade', (string) $normalizedGrade);
-                            if ($index === 0) {
-                                $userQuery->whereRaw($gradeClause);
-                            } else {
-                                $userQuery->orWhereRaw($gradeClause);
-                            }
-                        }
-                    });
-                }
-
-                if (! empty($allowedSubjects)) {
-                    $query->where(function ($subjectQuery) use ($allowedSubjects) {
-                        foreach ($allowedSubjects as $index => $subject) {
-                            $normalizedSubject = strtolower(trim((string) $subject));
-                            if ($normalizedSubject === '') {
-                                continue;
-                            }
-
-                            if ($index === 0) {
-                                $subjectQuery->whereRaw('LOWER(TRIM(subject)) = ?', [$normalizedSubject]);
-                            } else {
-                                $subjectQuery->orWhereRaw('LOWER(TRIM(subject)) = ?', [$normalizedSubject]);
-                            }
-                        }
-                    });
-                }
-            }
-
             if ($gradeValue !== null) {
                 $query->whereHas('user', function ($userQuery) use ($gradeValue) {
                     $userQuery->whereRaw(
                         $this->getGradeNormalizationClause('users.school_grade', $gradeValue)
                     );
+                });
+            }
+
+            if ($scopeFilters->isNotEmpty()) {
+                $query->whereHas('user', function ($userQuery) use ($scopeFilters): void {
+                    foreach ($scopeFilters as $field => $value) {
+                        $userQuery->where($field, $value);
+                    }
                 });
             }
 
@@ -264,13 +154,13 @@ class AdminHomeController extends Controller
         $pendingRequestsCount = Friendship::query()->where('status', 'pending')->count();
 
         // Get teachers count from TeacherScope with filter support
-        $teachersCount = $this->getTeachersCount($gradeValue, $subjectValue);
+        $teachersCount = $this->getTeachersCount($gradeValue, $subjectValue, $scopeFilters);
 
         // Get users count with filter support
-        $usersCount = $this->getUsersCount($gradeValue, $subjectValue);
+        $usersCount = $this->getUsersCount($gradeValue, $subjectValue, $scopeFilters);
 
         // Get interactive videos count with filter support
-        $interactiveVideosCount = $this->getInteractiveVideosCount($gradeValue, $subjectValue);
+        $interactiveVideosCount = $this->getInteractiveVideosCount($gradeValue, $subjectValue, $scopeFilters);
 
         $stats = [
             'active_students_count' => (int) $activeStudentsQuery->count(),
@@ -459,38 +349,8 @@ class AdminHomeController extends Controller
             $allowedGrades = $availableGrades->pluck('key')->all();
             $availableGrades = $availableGrades->values()->all();
         } elseif ($role === 'teacher') {
-            $allowedGrades = TeacherScope::query()
-                ->where('user_id', $user->id)
-                ->pluck('school_grade')
-                ->map(fn ($grade) => TeacherScope::normalizeGradeValue($grade))
-                ->filter(fn ($grade) => $grade !== null && $grade !== '')
-                ->unique()
-                ->values()
-                ->all();
-
-            $availableGrades = collect($availableGrades)
-                ->filter(fn ($grade) => in_array($grade['key'], $allowedGrades, true))
-                ->values()
-                ->all();
-
-            if ($allowedGrades === []) {
-                return response()->json([
-                    'message' => 'لا توجد درجات دراسية مخصصة لهذا المدرس',
-                    'data' => [],
-                    'posts' => [],
-                    'available_grades' => [],
-                    'meta' => ['current_page' => 1, 'last_page' => 1, 'total' => 0],
-                ]);
-            }
-
-            $query->whereHas('user', function ($userQuery) use ($allowedGrades) {
-                $userQuery->where(function ($gradeQuery) use ($allowedGrades) {
-                    foreach ($allowedGrades as $index => $grade) {
-                        $clause = $this->getGradeNormalizationClause('users.school_grade', (string) $grade);
-                        $index === 0 ? $gradeQuery->whereRaw($clause) : $gradeQuery->orWhereRaw($clause);
-                    }
-                });
-            });
+            $allowedGrades = $availableGrades->pluck('key')->all();
+            $availableGrades = $availableGrades->values()->all();
         } else {
             $allowedGrades = [];
         }
@@ -570,22 +430,6 @@ class AdminHomeController extends Controller
 
         if ($post->status !== 'pending') {
             return response()->json(['message' => 'هذا المنشور ليس قيد المراجعة'], 422);
-        }
-
-        if (! $isMainAdmin) {
-            $allowedGrades = TeacherScope::query()
-                ->where('user_id', $user->id)
-                ->pluck('school_grade')
-                ->map(fn ($grade) => TeacherScope::normalizeGradeValue($grade))
-                ->filter(fn ($grade) => $grade !== null && $grade !== '')
-                ->unique()
-                ->values()
-                ->all();
-
-            $postUserGrade = TeacherScope::normalizeGradeValue($post->user?->school_grade);
-            if ($postUserGrade === null || ! in_array($postUserGrade, $allowedGrades, true)) {
-                return response()->json(['message' => 'هذا المنشور خارج نطاق درجاتك الدراسية'], 403);
-            }
         }
 
         $action = strtolower(trim((string) $request->input('action', $request->input('status', ''))));
@@ -714,13 +558,21 @@ class AdminHomeController extends Controller
         ";
     }
 
-    protected function getTeachersCount(?string $gradeValue = null, ?string $subjectValue = null): int
+    protected function getTeachersCount(?string $gradeValue = null, ?string $subjectValue = null, $scopeFilters = null): int
     {
         $query = TeacherScope::query()->distinct('user_id');
 
         // Apply grade filter
         if ($gradeValue !== null) {
             $query->where('school_grade', $gradeValue);
+        }
+
+        if ($scopeFilters?->isNotEmpty()) {
+            $query->whereHas('user', function ($userQuery) use ($scopeFilters): void {
+                foreach ($scopeFilters as $field => $value) {
+                    $userQuery->where($field, $value);
+                }
+            });
         }
 
         // Apply subject filter with proper variant matching
@@ -752,7 +604,7 @@ class AdminHomeController extends Controller
         return (int) $query->count();
     }
 
-    protected function getUsersCount(?string $gradeValue = null, ?string $subjectValue = null): int
+    protected function getUsersCount(?string $gradeValue = null, ?string $subjectValue = null, $scopeFilters = null): int
     {
         $query = User::query()->where('role', 'user');
 
@@ -761,6 +613,12 @@ class AdminHomeController extends Controller
             $query->whereRaw(
                 $this->getGradeNormalizationClause('school_grade', $gradeValue)
             );
+        }
+
+        if ($scopeFilters?->isNotEmpty()) {
+            foreach ($scopeFilters as $field => $value) {
+                $query->where($field, $value);
+            }
         }
 
         // Apply subject filter if provided
@@ -779,7 +637,7 @@ class AdminHomeController extends Controller
         return (int) $query->count();
     }
 
-    protected function getInteractiveVideosCount(?string $gradeValue = null, ?string $subjectValue = null): int
+    protected function getInteractiveVideosCount(?string $gradeValue = null, ?string $subjectValue = null, $scopeFilters = null): int
     {
         $query = InteractiveVideo::query();
 
@@ -789,6 +647,14 @@ class AdminHomeController extends Controller
                 $userQuery->whereRaw(
                     $this->getGradeNormalizationClause('users.school_grade', $gradeValue)
                 );
+            });
+        }
+
+        if ($scopeFilters?->isNotEmpty()) {
+            $query->whereHas('user', function ($userQuery) use ($scopeFilters): void {
+                foreach ($scopeFilters as $field => $value) {
+                    $userQuery->where($field, $value);
+                }
             });
         }
 

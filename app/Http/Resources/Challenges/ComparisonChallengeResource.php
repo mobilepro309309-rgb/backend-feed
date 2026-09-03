@@ -6,9 +6,12 @@ namespace App\Http\Resources\Challenges;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Http\Resources\Concerns\ResolvesSubjectNameAr;
 
 class ComparisonChallengeResource extends JsonResource
 {
+    use ResolvesSubjectNameAr;
+
     public function toArray($request): array
     {
         return [
@@ -17,6 +20,7 @@ class ComparisonChallengeResource extends JsonResource
             'file_url' => $this->file_url ?? null,
             'title' => $this->title,
             'subject' => $this->subject,
+            'subject_name_ar' => $this->resolveSubjectNameAr(),
             'left_label' => $this->left_label,
             'right_label' => $this->right_label,
             'left_text' => $this->left_text,
