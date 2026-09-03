@@ -197,6 +197,7 @@ $apiRoutes = function (): void {
         Route::get('/live-duel/eligible-peers', [LiveDuelChallengeController::class, 'getEligiblePeers']);
         Route::get('/live-duel/room-status/{roomId}', [LiveDuelChallengeController::class, 'getRoomStatus']);
         Route::post('/live-duel/create-room', [LiveDuelChallengeController::class, 'createRoom']);
+        Route::post('/live-duel/rooms/{roomId}/answers', [LiveDuelChallengeController::class, 'submitAnswer']);
         
         // Strict Join Routes with Aliases for Maximum Compatibility
         Route::post('/live-duel/join-room', [LiveDuelChallengeController::class, 'joinRoom']);

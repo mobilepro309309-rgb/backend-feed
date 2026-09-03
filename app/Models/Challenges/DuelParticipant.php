@@ -18,7 +18,14 @@ class DuelParticipant extends Model
         'room_id',
         'user_id',
         'score',
+        'answered_count',
+        'answered_questions',
         'status',
+    ];
+
+    protected $casts = [
+        'answered_count' => 'integer',
+        'answered_questions' => 'array',
     ];
 
     public function room(): BelongsTo

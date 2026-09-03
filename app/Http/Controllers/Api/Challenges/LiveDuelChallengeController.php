@@ -7,7 +7,7 @@ use Illuminate\Http\{Request, UploadedFile};
 
 use App\Http\Controllers\Api\Concerns\FiltersQuestionListings;
 use App\Http\Controllers\Controller;
-use App\Events\{DuelInvitedEvent, DuelJoinedEvent};
+use App\Events\{DuelAnswerSubmittedEvent, DuelInvitedEvent, DuelJoinedEvent};
 use App\Models\Challenges\{DuelParticipant, DuelRoom, LiveDuelChallenge};
 use App\Models\QuestionExplanation;
 use App\Models\User;
@@ -320,6 +320,52 @@ class LiveDuelChallengeController extends Controller
             'status' => (string) $room->status, // Guaranteed raw DB string ('active' or 'waiting')
             'started_at' => $room->started_at ? \Carbon\Carbon::parse($room->started_at)->toIso8601String() : null,
             'questions' => $questions,
+        ]);
+    }
+
+    public function submitAnswer(Request $request, int $roomId)
+    {
+        $user = $request->user();
+        $validated = $request->validate([
+            'question_index' => ['required', 'integer', 'min:0'],
+            'answer_index' => ['required', 'integer', 'min:0'],
+        ]);
+
+        $room = DuelRoom::with('challenge')->findOrFail($roomId);
+        $participant = DuelParticipant::where('room_id', $room->id)
+            ->where('user_id', $user->id)
+            ->firstOrFail();
+        $answeredQuestions = $participant->answered_questions ?? [];
+        $questionKey = (string) $validated['question_index'];
+
+        if (in_array($questionKey, array_map('strval', $answeredQuestions), true)) {
+            return response()->json([
+                'status' => 'duplicate',
+                'correct_count' => (int) $participant->score,
+                'wrong_count' => max(0, (int) $participant->answered_count - (int) $participant->score),
+            ]);
+        }
+
+        $questions = is_array($room->challenge?->questions) ? $room->challenge->questions : [];
+        $question = $questions[$validated['question_index']] ?? null;
+        $correctIndex = $question['correctIndex'] ?? $question['correct_index'] ?? null;
+        $isCorrect = $correctIndex !== null && (int) $correctIndex === (int) $validated['answer_index'];
+
+        $answeredQuestions[] = $questionKey;
+        $participant->answered_questions = $answeredQuestions;
+        $participant->answered_count = count($answeredQuestions);
+        if ($isCorrect) {
+            $participant->score = (int) $participant->score + 1;
+        }
+        $participant->save();
+
+        broadcast(new DuelAnswerSubmittedEvent($participant->fresh()));
+
+        return response()->json([
+            'status' => 'recorded',
+            'is_correct' => $isCorrect,
+            'correct_count' => (int) $participant->score,
+            'wrong_count' => max(0, (int) $participant->answered_count - (int) $participant->score),
         ]);
     }
 
